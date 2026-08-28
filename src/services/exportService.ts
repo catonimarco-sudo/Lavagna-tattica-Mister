@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { toPng, toJpeg } from 'html-to-image';
 import { ExerciseDrill, Player, TeamSettings } from '../types';
 
 export interface ExportOptions {
@@ -16,16 +16,23 @@ export async function exportPitchAsImage(
   pitchElement: HTMLElement,
   options: ExportOptions
 ): Promise<string> {
-  const canvas = await html2canvas(pitchElement, {
-    scale: 2.5, // Crisp high-definition output
-    useCORS: true,
-    logging: false,
-    backgroundColor: '#1b4d24', // Rich grass base
-    allowTaint: true,
-  });
+  const pixelRatio = 2.5; // Crisp high-definition output
+  let dataUrl: string;
 
-  const mimeType = options.format === 'png' ? 'image/png' : 'image/jpeg';
-  const dataUrl = canvas.toDataURL(mimeType, options.quality || 0.95);
+  if (options.format === 'png') {
+    dataUrl = await toPng(pitchElement, {
+      pixelRatio,
+      quality: options.quality || 0.98,
+      cacheBust: true,
+    });
+  } else {
+    dataUrl = await toJpeg(pitchElement, {
+      pixelRatio,
+      quality: options.quality || 0.98,
+      backgroundColor: '#1b4d24', // Rich grass base
+      cacheBust: true,
+    });
+  }
 
   // Trigger download
   const link = document.createElement('a');
@@ -48,16 +55,14 @@ export async function exportDrillToPDF(
     notes?: string;
   }
 ): Promise<void> {
-  // 1. Capture pitch canvas as image
-  const pitchCanvas = await html2canvas(pitchElement, {
-    scale: 2.5,
-    useCORS: true,
-    logging: false,
+  // 1. Capture pitch canvas as image with html-to-image (supports oklch, lab, modern CSS)
+  const pitchImgData = await toJpeg(pitchElement, {
+    pixelRatio: 2.5,
+    quality: 0.98,
     backgroundColor: '#15411e',
-    allowTaint: true,
+    cacheBust: true,
   });
 
-  const pitchImgData = pitchCanvas.toDataURL('image/jpeg', 0.95);
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -135,16 +140,17 @@ export async function exportDrillToPDF(
   currentY += 16;
 
   // 4. Tactical Pitch Image
-  const pitchImgHeight = (contentWidth * pitchCanvas.height) / pitchCanvas.width;
-  const clampedPitchHeight = Math.min(pitchImgHeight, 105);
+  const pitchRect = pitchElement.getBoundingClientRect();
+  const pitchRatio = pitchRect.width > 0 ? pitchRect.height / pitchRect.width : 0.65;
+  const pitchImgHeight = Math.min(contentWidth * pitchRatio, 105);
 
   // Border & Pitch Frame
   pdf.setDrawColor(15, 23, 42);
   pdf.setLineWidth(0.6);
-  pdf.addImage(pitchImgData, 'JPEG', margin, currentY, contentWidth, clampedPitchHeight);
-  pdf.rect(margin, currentY, contentWidth, clampedPitchHeight, 'D');
+  pdf.addImage(pitchImgData, 'JPEG', margin, currentY, contentWidth, pitchImgHeight);
+  pdf.rect(margin, currentY, contentWidth, pitchImgHeight, 'D');
 
-  currentY += clampedPitchHeight + 6;
+  currentY += pitchImgHeight + 6;
 
   // 5. Objectives & Coaching Points
   pdf.setFont('helvetica', 'bold');
