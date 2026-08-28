@@ -1,0 +1,6 @@
+{
+  "name": "MisterTactics - Lavagna Tattica Calcio",
+  "description": "Lavagna tattica professionale per allenatori di calcio con gestione campetto dinamico, coni, cinesini, giocatori con foto, disegno tattico avanzato, esportazione PDF/JPEG e sincronizzazione in tempo reale per AI Studio e Vercel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

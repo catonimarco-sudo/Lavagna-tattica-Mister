@@ -1,0 +1,813 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  ExerciseDrill,
+  Player,
+  EquipmentItem,
+  DrawingElement,
+  ToolMode,
+  PitchTheme,
+  PitchViewMode,
+  TeamSettings,
+  EquipmentType,
+  SyncSessionState,
+} from './types';
+import {
+  DEFAULT_DRILL,
+  DEFAULT_ROSTER,
+  DEFAULT_TEAM_SETTINGS,
+  FORMATIONS_PRESETS,
+} from './constants/defaultData';
+import { RealtimeSyncService } from './services/syncService';
+import { TacticalPitch } from './components/Pitch/TacticalPitch';
+import { TacticalToolbar } from './components/Toolbar/TacticalToolbar';
+import { PitchSelector } from './components/Toolbar/PitchSelector';
+import { RosterManager } from './components/Roster/RosterManager';
+import { DrillManager } from './components/DrillBuilder/DrillManager';
+import { ExportModal } from './components/Export/ExportModal';
+import { CloudSyncModal } from './components/Sync/CloudSyncModal';
+import { PlayerEditModal } from './components/Roster/PlayerEditModal';
+import {
+  Shield,
+  Users,
+  BookOpen,
+  Cloud,
+  Download,
+  Play,
+  Pause,
+  RotateCcw,
+  Plus,
+  Copy,
+  Trash2,
+  ChevronRight,
+  ChevronLeft,
+  Sparkles,
+  Info,
+} from 'lucide-react';
+
+export default function App() {
+  // 1. Core State
+  const [drill, setDrill] = useState<ExerciseDrill>(DEFAULT_DRILL);
+  const [roster, setRoster] = useState<Player[]>(DEFAULT_ROSTER);
+  const [teamSettings, setTeamSettings] = useState<TeamSettings>(DEFAULT_TEAM_SETTINGS);
+
+  // 2. Tactical Toolbar State
+  const [activeTool, setActiveTool] = useState<ToolMode>('select');
+  const [currentColor, setCurrentColor] = useState<string>('#ffffff');
+  const [currentStrokeWidth, setCurrentStrokeWidth] = useState<number>(3.5);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null);
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+
+  // 3. Modals State
+  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
+  const [isDrillModalOpen, setIsDrillModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+
+  // 4. Undo / Redo History Stack (for drawings)
+  const [undoStack, setUndoStack] = useState<DrawingElement[][]>([]);
+  const [redoStack, setRedoStack] = useState<DrawingElement[][]>([]);
+
+  // 5. Multi-Phase Animation Player State
+  const [isPlayingAnimation, setIsPlayingAnimation] = useState(false);
+  const animationTimerRef = useRef<number | null>(null);
+
+  // 6. Realtime Cloud Sync State
+  const [roomId, setRoomId] = useState<string>('MISTER-CALCIO-ROOM-1');
+  const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
+  const syncService = useRef(RealtimeSyncService.getInstance()).current;
+  const isReceivingRemoteUpdate = useRef(false);
+
+  // Load Room ID from URL if provided (e.g. ?room=ROSA-UNDER-17)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (roomParam) {
+      const clean = roomParam.toUpperCase().trim();
+      setRoomId(clean);
+      syncService.setRoomId(clean);
+    } else {
+      const savedLocal = syncService.getSavedLocalState();
+      if (savedLocal) {
+        if (savedLocal.drill) setDrill(savedLocal.drill);
+        if (savedLocal.roster) setRoster(savedLocal.roster);
+        if (savedLocal.teamSettings) setTeamSettings(savedLocal.teamSettings);
+        if (savedLocal.roomId) setRoomId(savedLocal.roomId);
+        if (savedLocal.lastUpdated) setLastSyncTime(savedLocal.lastUpdated);
+      }
+    }
+
+    // Subscribe to realtime changes from other tabs or remote instances (AI Studio <-> Vercel)
+    const unsubscribe = syncService.subscribe((remoteState: SyncSessionState) => {
+      isReceivingRemoteUpdate.current = true;
+      if (remoteState.drill) setDrill(remoteState.drill);
+      if (remoteState.roster) setRoster(remoteState.roster);
+      if (remoteState.teamSettings) setTeamSettings(remoteState.teamSettings);
+      if (remoteState.lastUpdated) setLastSyncTime(remoteState.lastUpdated);
+      setTimeout(() => {
+        isReceivingRemoteUpdate.current = false;
+      }, 300);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Broadcast local changes to Cloud Sync (Debounced)
+  const syncTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (isReceivingRemoteUpdate.current) return;
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    syncTimeoutRef.current = window.setTimeout(() => {
+      const stateToPublish: SyncSessionState = {
+        roomId,
+        lastUpdated: Date.now(),
+        author: 'Coach',
+        drill,
+        roster,
+        teamSettings,
+      };
+      syncService.publishUpdate(stateToPublish);
+      setLastSyncTime(stateToPublish.lastUpdated);
+    }, 400);
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [drill, roster, teamSettings, roomId]);
+
+  // Phase Helpers
+  const currentPhaseIndex = drill.activePhaseIndex || 0;
+  const currentPhase = drill.phases[currentPhaseIndex] || drill.phases[0];
+
+  // Helper to update current active phase
+  const updateCurrentPhase = useCallback(
+    (updater: (prevPhase: typeof currentPhase) => typeof currentPhase) => {
+      setDrill((prevDrill) => {
+        const updatedPhases = [...prevDrill.phases];
+        const activeIdx = prevDrill.activePhaseIndex;
+        if (!updatedPhases[activeIdx]) return prevDrill;
+
+        updatedPhases[activeIdx] = updater(updatedPhases[activeIdx]);
+        return {
+          ...prevDrill,
+          phases: updatedPhases,
+        };
+      });
+    },
+    []
+  );
+
+  // -------------------------------------------------------------
+  // Player Operations on Pitch
+  // -------------------------------------------------------------
+  const handleUpdatePlayerPosition = (id: string, x: number, y: number) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: phase.players.map((p) => (p.id === id ? { ...p, x, y } : p)),
+    }));
+  };
+
+  const handleRotatePlayer = (id: string, angle: number) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: phase.players.map((p) => (p.id === id ? { ...p, rotation: angle } : p)),
+    }));
+  };
+
+  const handleDeletePlayerFromPitch = (id: string) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: phase.players.filter((p) => p.id !== id),
+    }));
+    if (selectedPlayerId === id) setSelectedPlayerId(null);
+  };
+
+  const handleAddPlayerToPitch = (team: 'home' | 'away' | 'goalkeeper_home' | 'jolly') => {
+    // Find next available player from roster or generate new one
+    const availableFromRoster = roster.find(
+      (r) => (r.team === team || (team === 'home' && r.team === 'goalkeeper_home')) && !currentPhase.players.some((p) => p.id === r.id)
+    );
+
+    if (availableFromRoster) {
+      const newPlayerInstance: Player = {
+        ...availableFromRoster,
+        x: 50,
+        y: 50,
+      };
+      updateCurrentPhase((phase) => ({
+        ...phase,
+        players: [...phase.players, newPlayerInstance],
+      }));
+    } else {
+      const nextNum = currentPhase.players.length + 1;
+      const newPl: Player = {
+        id: `p-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: `Giocatore ${nextNum}`,
+        number: nextNum,
+        role: team === 'goalkeeper_home' ? 'POR' : 'CC',
+        team,
+        foot: 'Destro',
+        x: 50,
+        y: 50,
+      };
+      setRoster((prev) => [...prev, newPl]);
+      updateCurrentPhase((phase) => ({
+        ...phase,
+        players: [...phase.players, newPl],
+      }));
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Equipment Operations
+  // -------------------------------------------------------------
+  const handleAddEquipment = (type: EquipmentType, x: number = 50, y: number = 50) => {
+    const newItem: EquipmentItem = {
+      id: `eq-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      type,
+      x,
+      y,
+      rotation: 0,
+    };
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      equipment: [...phase.equipment, newItem],
+    }));
+  };
+
+  const handleUpdateEquipmentPosition = (id: string, x: number, y: number) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      equipment: phase.equipment.map((eq) => (eq.id === id ? { ...eq, x, y } : eq)),
+    }));
+  };
+
+  const handleRotateEquipment = (id: string, angle: number) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      equipment: phase.equipment.map((eq) => (eq.id === id ? { ...eq, rotation: angle } : eq)),
+    }));
+  };
+
+  const handleDeleteEquipment = (id: string) => {
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      equipment: phase.equipment.filter((eq) => eq.id !== id),
+    }));
+    if (selectedEquipmentId === id) setSelectedEquipmentId(null);
+  };
+
+  // -------------------------------------------------------------
+  // Tactical Drawings & Undo / Redo
+  // -------------------------------------------------------------
+  const handleAddDrawing = (drawing: DrawingElement) => {
+    setUndoStack((prev) => [...prev, currentPhase.drawings]);
+    setRedoStack([]); // Clear redo
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      drawings: [...phase.drawings, drawing],
+    }));
+  };
+
+  const handleDeleteDrawing = (id: string) => {
+    setUndoStack((prev) => [...prev, currentPhase.drawings]);
+    setRedoStack([]);
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      drawings: phase.drawings.filter((d) => d.id !== id),
+    }));
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const previousDrawings = undoStack[undoStack.length - 1];
+    setRedoStack((prev) => [...prev, currentPhase.drawings]);
+    setUndoStack((prev) => prev.slice(0, prev.length - 1));
+
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      drawings: previousDrawings,
+    }));
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const nextDrawings = redoStack[redoStack.length - 1];
+    setUndoStack((prev) => [...prev, currentPhase.drawings]);
+    setRedoStack((prev) => prev.slice(0, prev.length - 1));
+
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      drawings: nextDrawings,
+    }));
+  };
+
+  const handleClearDrawings = () => {
+    if (currentPhase.drawings.length === 0) return;
+    setUndoStack((prev) => [...prev, currentPhase.drawings]);
+    setRedoStack([]);
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      drawings: [],
+    }));
+  };
+
+  // -------------------------------------------------------------
+  // Drag and Drop from Tray onto Pitch
+  // -------------------------------------------------------------
+  const handleDropNewItem = (
+    type: 'player' | EquipmentType,
+    x: number,
+    y: number,
+    data?: any
+  ) => {
+    if (type === 'player') {
+      const team = data?.team || 'home';
+      handleAddPlayerToPitch(team);
+    } else {
+      handleAddEquipment(type as EquipmentType, x, y);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Formations Preset Application
+  // -------------------------------------------------------------
+  const handleApplyFormation = (formationKey: string) => {
+    const formation = FORMATIONS_PRESETS[formationKey];
+    if (!formation) return;
+
+    // Use current home players or take from roster
+    const activeHomePlayers = currentPhase.players.filter((p) => p.team === 'home' || p.team === 'goalkeeper_home');
+    const availableRoster = roster.filter((p) => p.team === 'home' || p.team === 'goalkeeper_home');
+
+    const updatedPlayers: Player[] = formation.positions.map((pos, idx) => {
+      const existing = activeHomePlayers[idx] || availableRoster[idx];
+      if (existing) {
+        return {
+          ...existing,
+          role: pos.role,
+          x: pos.x,
+          y: pos.y,
+        };
+      }
+      return {
+        id: `p-${Date.now()}-${idx}`,
+        name: `Giocatore ${idx + 1}`,
+        number: idx + 1,
+        role: pos.role,
+        team: pos.role === 'POR' ? 'goalkeeper_home' : 'home',
+        foot: 'Destro',
+        x: pos.x,
+        y: pos.y,
+      };
+    });
+
+    // Keep away and jolly players untouched
+    const otherPlayers = currentPhase.players.filter((p) => p.team !== 'home' && p.team !== 'goalkeeper_home');
+
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: [...updatedPlayers, ...otherPlayers],
+    }));
+  };
+
+  // -------------------------------------------------------------
+  // Multi-Phase Animation Player
+  // -------------------------------------------------------------
+  const togglePlayAnimation = () => {
+    if (isPlayingAnimation) {
+      if (animationTimerRef.current) clearInterval(animationTimerRef.current);
+      setIsPlayingAnimation(false);
+    } else {
+      setIsPlayingAnimation(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!isPlayingAnimation) return;
+
+    animationTimerRef.current = window.setInterval(() => {
+      setDrill((prev) => {
+        const nextIdx = (prev.activePhaseIndex + 1) % prev.phases.length;
+        return { ...prev, activePhaseIndex: nextIdx };
+      });
+    }, 1800);
+
+    return () => {
+      if (animationTimerRef.current) clearInterval(animationTimerRef.current);
+    };
+  }, [isPlayingAnimation, drill.phases.length]);
+
+  const handleAddPhase = () => {
+    const newIdx = drill.phases.length + 1;
+    const newPhase = {
+      id: `phase-${Date.now()}`,
+      name: `Fase ${newIdx}`,
+      description: `Svolgimento fase ${newIdx}`,
+      players: currentPhase.players.map((p) => ({ ...p })),
+      equipment: currentPhase.equipment.map((eq) => ({ ...eq })),
+      drawings: [],
+    };
+    setDrill((prev) => ({
+      ...prev,
+      phases: [...prev.phases, newPhase],
+      activePhaseIndex: prev.phases.length,
+    }));
+  };
+
+  const handleDuplicatePhase = (index: number) => {
+    const target = drill.phases[index];
+    if (!target) return;
+    const duplicated = {
+      ...target,
+      id: `phase-${Date.now()}`,
+      name: `${target.name} (Copia)`,
+      players: target.players.map((p) => ({ ...p })),
+      equipment: target.equipment.map((eq) => ({ ...eq })),
+      drawings: target.drawings.map((d) => ({ ...d })),
+    };
+    setDrill((prev) => ({
+      ...prev,
+      phases: [...prev.phases.slice(0, index + 1), duplicated, ...prev.phases.slice(index + 1)],
+      activePhaseIndex: index + 1,
+    }));
+  };
+
+  const handleDeletePhase = (index: number) => {
+    if (drill.phases.length <= 1) return;
+    setDrill((prev) => {
+      const nextPhases = prev.phases.filter((_, i) => i !== index);
+      const nextActive = Math.min(prev.activePhaseIndex, nextPhases.length - 1);
+      return {
+        ...prev,
+        phases: nextPhases,
+        activePhaseIndex: nextActive,
+      };
+    });
+  };
+
+  // -------------------------------------------------------------
+  // JSON Backup / Import
+  // -------------------------------------------------------------
+  const handleExportJson = () => {
+    const fullState: SyncSessionState = {
+      roomId,
+      lastUpdated: Date.now(),
+      author: 'Coach',
+      drill,
+      roster,
+      teamSettings,
+    };
+    const blob = new Blob([JSON.stringify(fullState, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mister_tactics_${roomId.toLowerCase()}_backup.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string) as SyncSessionState;
+        if (parsed.drill) setDrill(parsed.drill);
+        if (parsed.roster) setRoster(parsed.roster);
+        if (parsed.teamSettings) setTeamSettings(parsed.teamSettings);
+        if (parsed.roomId) {
+          setRoomId(parsed.roomId);
+          syncService.setRoomId(parsed.roomId);
+        }
+        alert('Dati importati con successo!');
+      } catch (err) {
+        alert('File JSON non valido.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none antialiased">
+      {/* 1. Top Navigation Bar */}
+      <header className="bg-slate-900 border-b border-slate-800 px-3 sm:px-5 py-2.5 flex items-center justify-between gap-3 shadow-md z-30">
+        {/* Brand & Exercise Info */}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-600/30 border border-emerald-400/40">
+            <span className="text-xl">⚽</span>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm sm:text-base font-extrabold text-white tracking-tight leading-tight">
+                MisterTactics
+              </h1>
+              <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hidden sm:inline-block">
+                {drill.category}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium truncate max-w-[200px] sm:max-w-md">
+              {drill.title}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Center Buttons */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Roster & Players Modal Button */}
+          <button
+            id="nav-btn-roster"
+            type="button"
+            onClick={() => setIsRosterModalOpen(true)}
+            className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            <Users className="w-4 h-4 text-sky-400" />
+            <span className="hidden sm:inline">Rosa Squadra</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-slate-700 text-[10px] font-bold text-sky-300">
+              {currentPhase.players.length}/{roster.length}
+            </span>
+          </button>
+
+          {/* Drill Details Modal */}
+          <button
+            id="nav-btn-drill-details"
+            type="button"
+            onClick={() => setIsDrillModalOpen(true)}
+            className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            <BookOpen className="w-4 h-4 text-emerald-400" />
+            <span className="hidden md:inline">Scheda Esercizio</span>
+          </button>
+
+          {/* Realtime Cloud Sync Button (AI Studio <-> Vercel) */}
+          <button
+            id="nav-btn-cloud-sync"
+            type="button"
+            onClick={() => setIsSyncModalOpen(true)}
+            className="px-2.5 sm:px-3 py-1.5 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 text-sky-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+            title="Sincronizzazione Live AI Studio & Vercel"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+            </span>
+            <Cloud className="w-4 h-4" />
+            <span className="hidden sm:inline">Cloud Sync</span>
+          </button>
+
+          {/* Export PDF / JPEG */}
+          <button
+            id="nav-btn-export"
+            type="button"
+            onClick={() => setIsExportModalOpen(true)}
+            className="px-3 sm:px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-600/25 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>Esporta</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 2. Tactical Toolbar (Tools, Colors, Cones & Equipment) */}
+      <TacticalToolbar
+        activeTool={activeTool}
+        onSelectTool={setActiveTool}
+        currentColor={currentColor}
+        onChangeColor={setCurrentColor}
+        currentStrokeWidth={currentStrokeWidth}
+        onChangeStrokeWidth={setCurrentStrokeWidth}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onClearDrawings={handleClearDrawings}
+        onAddEquipment={(type) => handleAddEquipment(type)}
+        onAddPlayer={handleAddPlayerToPitch}
+        showZonesGrid={drill.showZonesGrid}
+        onToggleZonesGrid={() => setDrill((prev) => ({ ...prev, showZonesGrid: !prev.showZonesGrid }))}
+      />
+
+      {/* 3. Pitch Selector & Section Cuts Bar */}
+      <PitchSelector
+        currentView={drill.pitchView}
+        onChangeView={(view) => setDrill((prev) => ({ ...prev, pitchView: view }))}
+        currentTheme={drill.pitchTheme}
+        onChangeTheme={(theme) => setDrill((prev) => ({ ...prev, pitchTheme: theme }))}
+        showNames={drill.showPlayerNames}
+        onToggleNames={() => setDrill((prev) => ({ ...prev, showPlayerNames: !prev.showPlayerNames }))}
+        showNumbers={drill.showPlayerNumbers}
+        onToggleNumbers={() => setDrill((prev) => ({ ...prev, showPlayerNumbers: !prev.showPlayerNumbers }))}
+        showPhotos={drill.showPlayerPhotos}
+        onTogglePhotos={() => setDrill((prev) => ({ ...prev, showPlayerPhotos: !prev.showPlayerPhotos }))}
+        onApplyFormation={handleApplyFormation}
+      />
+
+      {/* 4. Central Area: Tactical Pitch & Side Bench */}
+      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 overflow-auto relative">
+        <TacticalPitch
+          drill={drill}
+          teamSettings={teamSettings}
+          activeTool={activeTool}
+          currentColor={currentColor}
+          currentStrokeWidth={currentStrokeWidth}
+          selectedPlayerId={selectedPlayerId}
+          selectedEquipmentId={selectedEquipmentId}
+          onSelectPlayer={(p) => setSelectedPlayerId(p ? p.id : null)}
+          onSelectEquipment={(eq) => setSelectedEquipmentId(eq ? eq.id : null)}
+          onUpdatePlayerPosition={handleUpdatePlayerPosition}
+          onRotatePlayer={handleRotatePlayer}
+          onDeletePlayer={handleDeletePlayerFromPitch}
+          onEditPlayer={(p) => setEditingPlayer(p)}
+          onUpdateEquipmentPosition={handleUpdateEquipmentPosition}
+          onRotateEquipment={handleRotateEquipment}
+          onDeleteEquipment={handleDeleteEquipment}
+          onAddDrawing={handleAddDrawing}
+          onDeleteDrawing={handleDeleteDrawing}
+          onDropNewItem={handleDropNewItem}
+          isAnimating={isPlayingAnimation}
+        />
+      </main>
+
+      {/* 5. Bottom Tactical Phase & Animation Stepper Bar */}
+      <footer className="bg-slate-900 border-t border-slate-800 px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-2xl z-30">
+        {/* Phase Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+          <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1 shrink-0">
+            Fasi Esercizio:
+          </span>
+
+          {drill.phases.map((phase, idx) => {
+            const isActive = drill.activePhaseIndex === idx;
+            return (
+              <button
+                key={phase.id || idx}
+                id={`phase-step-btn-${idx}`}
+                type="button"
+                onClick={() => setDrill((prev) => ({ ...prev, activePhaseIndex: idx }))}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  isActive
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30 ring-1 ring-sky-400'
+                    : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700'
+                }`}
+              >
+                <span>{idx + 1}.</span>
+                <span>{phase.name || `Fase ${idx + 1}`}</span>
+              </button>
+            );
+          })}
+
+          <button
+            id="btn-footer-add-phase"
+            type="button"
+            onClick={handleAddPhase}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center shrink-0"
+            title="Aggiungi Nuova Fase Tattica"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Animation Playback & Quick Controls */}
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-play-animation"
+            type="button"
+            onClick={togglePlayAnimation}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-all ${
+              isPlayingAnimation
+                ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 animate-pulse'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25'
+            }`}
+          >
+            {isPlayingAnimation ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            <span>{isPlayingAnimation ? 'Pausa Animazione' : 'Riproduci Animazione'}</span>
+          </button>
+
+          {/* Quick Room Sync Badge in Footer */}
+          <div
+            onClick={() => setIsSyncModalOpen(true)}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-400 cursor-pointer hover:border-sky-500 transition-colors"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Room: <strong className="text-white font-mono">{roomId}</strong></span>
+          </div>
+        </div>
+      </footer>
+
+      {/* 6. Modals */}
+      {/* Roster & Squad Manager */}
+      <RosterManager
+        roster={roster}
+        activePlayersOnPitch={currentPhase.players}
+        teamSettings={teamSettings}
+        onAddPlayer={(newP) => setRoster((prev) => [...prev, newP])}
+        onUpdatePlayer={(upP) => {
+          setRoster((prev) => prev.map((p) => (p.id === upP.id ? upP : p)));
+          updateCurrentPhase((phase) => ({
+            ...phase,
+            players: phase.players.map((p) => (p.id === upP.id ? { ...p, ...upP } : p)),
+          }));
+        }}
+        onDeletePlayer={(id) => {
+          setRoster((prev) => prev.filter((p) => p.id !== id));
+          handleDeletePlayerFromPitch(id);
+        }}
+        onPlaceOnPitch={(player) => {
+          const alreadyOn = currentPhase.players.find((p) => p.id === player.id);
+          if (!alreadyOn) {
+            updateCurrentPhase((phase) => ({
+              ...phase,
+              players: [...phase.players, { ...player, x: 50, y: 50 }],
+            }));
+          }
+          setIsRosterModalOpen(false);
+        }}
+        isOpen={isRosterModalOpen}
+        onClose={() => setIsRosterModalOpen(false)}
+      />
+
+      {/* Drill & Exercise Manager */}
+      <DrillManager
+        drill={drill}
+        onUpdateDrill={(updated) => setDrill((prev) => ({ ...prev, ...updated }))}
+        onSelectPhase={(idx) => setDrill((prev) => ({ ...prev, activePhaseIndex: idx }))}
+        onAddPhase={handleAddPhase}
+        onDuplicatePhase={handleDuplicatePhase}
+        onDeletePhase={handleDeletePhase}
+        isPlayingAnimation={isPlayingAnimation}
+        onTogglePlayAnimation={togglePlayAnimation}
+        onResetAnimation={() => setDrill((prev) => ({ ...prev, activePhaseIndex: 0 }))}
+        isOpen={isDrillModalOpen}
+        onClose={() => setIsDrillModalOpen(false)}
+      />
+
+      {/* Export Modal (PDF / JPEG / PNG) */}
+      <ExportModal
+        drill={drill}
+        roster={roster}
+        teamSettings={teamSettings}
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
+
+      {/* Cloud Realtime Sync Modal (AI Studio <-> Vercel) */}
+      <CloudSyncModal
+        roomId={roomId}
+        onSetRoomId={(newRoom) => {
+          setRoomId(newRoom);
+          syncService.setRoomId(newRoom, {
+            roomId: newRoom,
+            lastUpdated: Date.now(),
+            author: 'Coach',
+            drill,
+            roster,
+            teamSettings,
+          });
+        }}
+        onForceSync={async () => {
+          await syncService.publishUpdate({
+            roomId,
+            lastUpdated: Date.now(),
+            author: 'Coach',
+            drill,
+            roster,
+            teamSettings,
+          });
+          setLastSyncTime(Date.now());
+        }}
+        onExportJson={handleExportJson}
+        onImportJson={handleImportJson}
+        lastUpdatedTime={lastSyncTime}
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+      />
+
+      {/* Quick Player Field Edit Modal */}
+      <PlayerEditModal
+        player={editingPlayer}
+        teamSettings={teamSettings}
+        onSave={(updated) => {
+          setRoster((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+          updateCurrentPhase((phase) => ({
+            ...phase,
+            players: phase.players.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
+          }));
+          setEditingPlayer(null);
+        }}
+        onDelete={(id) => {
+          handleDeletePlayerFromPitch(id);
+          setEditingPlayer(null);
+        }}
+        onClose={() => setEditingPlayer(null)}
+      />
+    </div>
+  );
+}
