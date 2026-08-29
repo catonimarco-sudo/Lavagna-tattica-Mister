@@ -795,6 +795,18 @@ export default function App() {
           setRoster((prev) => prev.filter((p) => p.id !== id));
           handleDeletePlayerFromPitch(id);
         }}
+        onResetRoster={() => {
+          setRoster(DEFAULT_ROSTER);
+          setDrill(DEFAULT_DRILL);
+          syncService.publishUpdate({
+            roomId,
+            lastUpdated: Date.now(),
+            author: 'Coach',
+            drill: DEFAULT_DRILL,
+            roster: DEFAULT_ROSTER,
+            teamSettings: DEFAULT_TEAM_SETTINGS,
+          });
+        }}
         onPlaceOnPitch={(player) => {
           const alreadyOn = currentPhase.players.find((p) => p.id === player.id);
           if (!alreadyOn) {

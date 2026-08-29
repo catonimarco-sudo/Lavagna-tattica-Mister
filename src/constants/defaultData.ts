@@ -24,18 +24,26 @@ export const DEFAULT_ROSTER: Player[] = [
   { id: 'p-10', name: 'Zaccagni M.', number: 11, role: 'ES', team: 'home', foot: 'Destro', x: 55, y: 82, notes: 'Dribbling verso il centro e attacco dell’area' },
   { id: 'p-11', name: 'Dovbyk A.', number: 9, role: 'ATT', team: 'home', foot: 'Sinistro', x: 74, y: 50, notes: 'Riferimento centrale d’attacco, sponde e profondità' },
   
-  // Riserve / Seconda squadra
+  // Riserve / Seconda squadra & Jolly
   { id: 'p-12', name: 'Vicario G.', number: 12, role: 'POR', team: 'goalkeeper_away', foot: 'Destro', x: 93, y: 50, notes: 'Reattività tra i pali' },
-  { id: 'p-13', name: 'Bellanova R.', number: 13, role: 'TD', team: 'away', foot: 'Destro', x: 75, y: 82 },
-  { id: 'p-14', name: 'Mancini G.', number: 14, role: 'DC', team: 'away', foot: 'Destro', x: 78, y: 62 },
-  { id: 'p-15', name: 'Buongiorno A.', number: 15, role: 'DC', team: 'away', foot: 'Sinistro', x: 78, y: 38 },
-  { id: 'p-16', name: 'Udogie D.', number: 16, role: 'TS', team: 'away', foot: 'Sinistro', x: 75, y: 18 },
-  { id: 'p-17', name: 'Locatelli M.', number: 17, role: 'MED', team: 'away', foot: 'Destro', x: 60, y: 50 },
-  { id: 'p-18', name: 'Pellegrini L.', number: 18, role: 'TRQ', team: 'away', foot: 'Destro', x: 55, y: 35 },
-  { id: 'p-19', name: 'Frattesi D.', number: 19, role: 'CC', team: 'away', foot: 'Destro', x: 55, y: 65 },
-  { id: 'p-20', name: 'Retegui M.', number: 20, role: 'ATT', team: 'away', foot: 'Destro', x: 30, y: 50 },
-  { id: 'p-21', name: 'Raspadori G.', number: 21, role: 'ATT', team: 'jolly', foot: 'Ambidestro', x: 50, y: 50 },
+  { id: 'p-13', name: 'Bellanova R.', number: 13, role: 'TD', team: 'away', foot: 'Destro', x: 75, y: 82, notes: 'Velocità e profondità' },
+  { id: 'p-14', name: 'Mancini G.', number: 14, role: 'DC', team: 'away', foot: 'Destro', x: 78, y: 62, notes: 'Marcatura stretta' },
+  { id: 'p-15', name: 'Buongiorno A.', number: 15, role: 'DC', team: 'away', foot: 'Sinistro', x: 78, y: 38, notes: 'Fisicità e contrasto' },
+  { id: 'p-16', name: 'Udogie D.', number: 16, role: 'TS', team: 'away', foot: 'Sinistro', x: 75, y: 18, notes: 'Fisicità e progressione' },
+  { id: 'p-17', name: 'Locatelli M.', number: 17, role: 'MED', team: 'away', foot: 'Destro', x: 60, y: 50, notes: 'Geometrie di centrocampo' },
+  { id: 'p-18', name: 'Pellegrini L.', number: 18, role: 'TRQ', team: 'away', foot: 'Destro', x: 55, y: 35, notes: 'Qualità tra le linee e calci da fermo' },
+  { id: 'p-19', name: 'Frattesi D.', number: 19, role: 'CC', team: 'away', foot: 'Destro', x: 55, y: 65, notes: 'Inserimenti letali in area' },
+  { id: 'p-20', name: 'Retegui M.', number: 20, role: 'ATT', team: 'away', foot: 'Destro', x: 30, y: 50, notes: 'Attacco alla porta e presenza in area' },
+  { id: 'p-21', name: 'Raspadori G.', number: 21, role: 'ATT', team: 'jolly', foot: 'Ambidestro', x: 50, y: 50, notes: 'Attaccante di raccordo e Jolly' },
+  { id: 'p-22', name: 'Carnesecchi M.', number: 22, role: 'POR', team: 'goalkeeper_away', foot: 'Destro', x: 93, y: 50, notes: 'Portiere reattivo' },
+  { id: 'p-23', name: 'Fagioli N.', number: 23, role: 'MED', team: 'away', foot: 'Destro', x: 62, y: 48, notes: 'Visione e pulizia tecnica' },
+  { id: 'p-24', name: 'Cambiaso A.', number: 24, role: 'TER', team: 'home', foot: 'Ambidestro', x: 30, y: 20, notes: 'Polivalenza tattica sia a destra che a sinistra' },
 ];
+
+export const initialPlayers = DEFAULT_ROSTER;
+export const defaultPlayers = DEFAULT_ROSTER;
+export const INITIAL_PLAYERS = DEFAULT_ROSTER;
+export const DEFAULT_PLAYERS = DEFAULT_ROSTER;
 
 export const INITIAL_PHASE_1: TacticalPhase = {
   id: 'phase-1',

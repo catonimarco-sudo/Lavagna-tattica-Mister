@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Player, TeamSettings } from '../../types';
-import { Users, Plus, Upload, Trash2, Edit2, Check, X, Camera, Shirt } from 'lucide-react';
+import { Users, Plus, Upload, Trash2, Edit2, Check, X, Camera, Shirt, RotateCcw } from 'lucide-react';
 
 interface RosterManagerProps {
   roster: Player[];
@@ -10,6 +10,7 @@ interface RosterManagerProps {
   onUpdatePlayer: (player: Player) => void;
   onDeletePlayer: (id: string) => void;
   onPlaceOnPitch: (player: Player) => void;
+  onResetRoster?: () => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -26,6 +27,7 @@ export const RosterManager: React.FC<RosterManagerProps> = ({
   onUpdatePlayer,
   onDeletePlayer,
   onPlaceOnPitch,
+  onResetRoster,
   isOpen,
   onClose,
 }) => {
@@ -165,6 +167,22 @@ export const RosterManager: React.FC<RosterManagerProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onResetRoster && (
+              <button
+                id="btn-reset-official-roster"
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Vuoi ripristinare l\'intera rosa ai valori predefiniti ufficiali (Catoni M., Kone M., Soulè M., ecc.)?')) {
+                    onResetRoster();
+                  }
+                }}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+                title="Ripristina la rosa predefinita ufficiale"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Ripristina Rosa</span>
+              </button>
+            )}
             <button
               id="btn-create-new-player"
               type="button"

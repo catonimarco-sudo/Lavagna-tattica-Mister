@@ -1,7 +1,7 @@
 import { SyncSessionState, ExerciseDrill, Player, TeamSettings } from '../types';
 
-const SYNC_STORAGE_KEY_PREFIX = 'mister_tactics_state_';
-const ACTIVE_ROOM_KEY = 'mister_tactics_active_room';
+const SYNC_STORAGE_KEY_PREFIX = 'mister_tactics_state_v3_';
+const ACTIVE_ROOM_KEY = 'mister_tactics_active_room_v3';
 
 // Public distributed key-value / relay for cross-domain realtime sync
 // Works between AI Studio, Vercel, localhost, and mobile devices!
