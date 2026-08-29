@@ -7,6 +7,7 @@ import {
   Waves,
   CornerUpRight,
   ShieldAlert,
+  Minus,
   Pencil,
   Square,
   Circle,
@@ -176,6 +177,22 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
           <span className="hidden lg:inline">Pressing</span>
         </button>
 
+        {/* Linea Retta / Connessione Reparto */}
+        <button
+          id="tool-btn-line-measure"
+          type="button"
+          onClick={() => onSelectTool('line_measure')}
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            activeTool === 'line_measure'
+              ? 'bg-sky-600 text-white ring-1 ring-sky-400'
+              : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
+          }`}
+          title="Linea Retta / Connessione Tattica / Distanza"
+        >
+          <Minus className="w-4 h-4" />
+          <span className="hidden lg:inline">Linea</span>
+        </button>
+
         {/* Disegno Libero */}
         <button
           id="tool-btn-freehand"
@@ -323,21 +340,47 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
           ))}
         </div>
 
-        {/* Stroke thickness */}
+        {/* Stroke thickness with finer presets */}
         <div className="hidden sm:flex items-center gap-1.5 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700 text-xs text-slate-300">
-          <span>Spessore:</span>
-          {[2, 3.5, 5].map((w) => (
+          <span className="font-medium text-slate-400">Spessore:</span>
+          {[
+            { width: 1.5, label: 'Sottile' },
+            { width: 2.5, label: 'Fine' },
+            { width: 3.5, label: 'Medio' },
+            { width: 5, label: 'Spesso' },
+          ].map((item) => (
             <button
-              key={w}
+              key={item.width}
+              id={`stroke-width-btn-${item.width}`}
               type="button"
-              onClick={() => onChangeStrokeWidth(w)}
-              className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
-                currentStrokeWidth === w ? 'bg-sky-600 text-white' : 'hover:bg-slate-700'
+              onClick={() => onChangeStrokeWidth(item.width)}
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all ${
+                currentStrokeWidth === item.width
+                  ? 'bg-sky-600 text-white shadow-sm ring-1 ring-sky-400'
+                  : 'hover:bg-slate-700 text-slate-300'
               }`}
+              title={`Spessore ${item.width}px (${item.label})`}
             >
-              {w === 2 ? 'Fine' : w === 3.5 ? 'Med' : 'Spesso'}
+              {item.label}
             </button>
           ))}
+          {/* Custom fine input */}
+          <div className="flex items-center gap-1 pl-1 border-l border-slate-700">
+            <input
+              id="input-stroke-width-range"
+              type="range"
+              min="1"
+              max="7"
+              step="0.5"
+              value={currentStrokeWidth}
+              onChange={(e) => onChangeStrokeWidth(parseFloat(e.target.value))}
+              className="w-14 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+              title={`Spessore preciso: ${currentStrokeWidth}px`}
+            />
+            <span className="text-[10px] font-mono text-sky-400 min-w-[24px]">
+              {currentStrokeWidth}px
+            </span>
+          </div>
         </div>
       </div>
 

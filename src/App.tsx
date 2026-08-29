@@ -607,6 +607,20 @@ export default function App() {
         onToggleNumbers={() => setDrill((prev) => ({ ...prev, showPlayerNumbers: !prev.showPlayerNumbers }))}
         showPhotos={drill.showPlayerPhotos}
         onTogglePhotos={() => setDrill((prev) => ({ ...prev, showPlayerPhotos: !prev.showPlayerPhotos }))}
+        playerRenderMode={drill.playerRenderMode || 'jersey'}
+        onTogglePlayerRenderMode={() =>
+          setDrill((prev) => ({
+            ...prev,
+            playerRenderMode: prev.playerRenderMode === 'jersey' ? 'circle' : 'jersey',
+          }))
+        }
+        showRepartoLines={drill.showRepartoLines || false}
+        onToggleRepartoLines={() =>
+          setDrill((prev) => ({
+            ...prev,
+            showRepartoLines: !prev.showRepartoLines,
+          }))
+        }
         onApplyFormation={handleApplyFormation}
       />
 

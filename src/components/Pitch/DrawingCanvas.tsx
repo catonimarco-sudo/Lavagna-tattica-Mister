@@ -116,7 +116,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     const stroke = el.color || '#ffffff';
     const strokeWidth = el.strokeWidth || 3;
-    const markerId = `arrowhead-${el.id || 'preview'}`;
+    const markerId = `arrowhead-${el.id || (isPreview ? 'preview' : 'draw')}`;
+    
+    // Scale arrowhead proportionally to strokeWidth
+    const markerSize = Math.max(3.5, Math.min(8, strokeWidth * 1.6));
 
     // Handle Eraser click
     const handleElementClick = (e: React.MouseEvent) => {
@@ -137,8 +140,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 viewBox="0 0 10 10"
                 refX="7"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth={markerSize}
+                markerHeight={markerSize}
                 orient="auto-start-reverse"
               >
                 <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={stroke} />
@@ -160,6 +163,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
       case 'arrow_pass': {
         // Dashed Passing Arrow
+        const dashPattern = strokeWidth <= 2 ? '4,3' : '6,4';
         return (
           <g key={el.id} className={activeTool === 'eraser' ? 'cursor-pointer hover:opacity-50' : ''} onClick={handleElementClick}>
             <defs>
@@ -168,8 +172,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 viewBox="0 0 10 10"
                 refX="7"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth={markerSize}
+                markerHeight={markerSize}
                 orient="auto-start-reverse"
               >
                 <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={stroke} />
@@ -182,7 +186,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               y2={`${p2.y}%`}
               stroke={stroke}
               strokeWidth={strokeWidth}
-              strokeDasharray="6,4"
+              strokeDasharray={dashPattern}
               strokeLinecap="round"
               markerEnd={`url(#${markerId})`}
             />
@@ -208,8 +212,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 viewBox="0 0 10 10"
                 refX="7"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth={markerSize}
+                markerHeight={markerSize}
                 orient="auto-start-reverse"
               >
                 <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={stroke} />
@@ -256,8 +260,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 viewBox="0 0 10 10"
                 refX="7"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth={markerSize}
+                markerHeight={markerSize}
                 orient="auto-start-reverse"
               >
                 <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={stroke} />
@@ -289,25 +293,28 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               strokeLinecap="square"
             />
             {/* T-Bar head */}
-            <circle cx={`${p2.x}%`} cy={`${p2.y}%`} r={strokeWidth * 1.5} fill={stroke} />
+            <circle cx={`${p2.x}%`} cy={`${p2.y}%`} r={Math.max(2.5, strokeWidth * 1.4)} fill={stroke} />
           </g>
         );
       }
 
       case 'line_measure': {
+        // Straight line / Tactical connection line
         return (
-          <line
-            key={el.id}
-            x1={`${p1.x}%`}
-            y1={`${p1.y}%`}
-            x2={`${p2.x}%`}
-            y2={`${p2.y}%`}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            className={activeTool === 'eraser' ? 'cursor-pointer hover:opacity-50' : ''}
-            onClick={handleElementClick}
-          />
+          <g key={el.id} className={activeTool === 'eraser' ? 'cursor-pointer hover:opacity-50' : ''} onClick={handleElementClick}>
+            <line
+              x1={`${p1.x}%`}
+              y1={`${p1.y}%`}
+              x2={`${p2.x}%`}
+              y2={`${p2.y}%`}
+              stroke={stroke}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+            />
+            {/* End point dots */}
+            <circle cx={`${p1.x}%`} cy={`${p1.y}%`} r={Math.max(1.5, strokeWidth * 0.9)} fill={stroke} />
+            <circle cx={`${p2.x}%`} cy={`${p2.y}%`} r={Math.max(1.5, strokeWidth * 0.9)} fill={stroke} />
+          </g>
         );
       }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { PitchTheme, PitchViewMode } from '../../types';
 import { FORMATIONS_PRESETS } from '../../constants/defaultData';
-import { Layout, Eye, Palette, Sparkles } from 'lucide-react';
+import { Layout, Palette, Sparkles, Shirt, CircleDot, Network } from 'lucide-react';
 
 interface PitchSelectorProps {
   currentView: PitchViewMode;
@@ -14,6 +14,10 @@ interface PitchSelectorProps {
   onToggleNumbers: () => void;
   showPhotos: boolean;
   onTogglePhotos: () => void;
+  playerRenderMode?: 'circle' | 'jersey';
+  onTogglePlayerRenderMode?: () => void;
+  showRepartoLines?: boolean;
+  onToggleRepartoLines?: () => void;
   onApplyFormation: (formationKey: string) => void;
 }
 
@@ -46,6 +50,10 @@ export const PitchSelector: React.FC<PitchSelectorProps> = ({
   onToggleNumbers,
   showPhotos,
   onTogglePhotos,
+  playerRenderMode = 'jersey',
+  onTogglePlayerRenderMode,
+  showRepartoLines = false,
+  onToggleRepartoLines,
   onApplyFormation,
 }) => {
   return (
@@ -74,7 +82,7 @@ export const PitchSelector: React.FC<PitchSelectorProps> = ({
         ))}
       </div>
 
-      {/* 2. Moduli Tattici Rapidi & Display Toggles */}
+      {/* 2. Moduli Tattici Rapidi, Reparto Lines & Display Toggles */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Moduli Tattici Presets */}
         <div className="flex items-center gap-1">
@@ -103,6 +111,51 @@ export const PitchSelector: React.FC<PitchSelectorProps> = ({
         </div>
 
         <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+
+        {/* Tactical Reparto Lines Button */}
+        {onToggleRepartoLines && (
+          <button
+            id="toggle-reparto-lines"
+            type="button"
+            onClick={onToggleRepartoLines}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+              showRepartoLines
+                ? 'bg-red-950/80 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-sm'
+                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Mostra / Nascondi Linee Tattiche di Reparto (Difesa, Centrocampo, Attacco)"
+          >
+            <Network className="w-3.5 h-3.5 text-red-400" />
+            <span>Linee Reparto</span>
+          </button>
+        )}
+
+        {/* Player Token Style Toggle: Jersey (Maglia) vs Circle (Cerchio) */}
+        {onTogglePlayerRenderMode && (
+          <button
+            id="toggle-player-style-mode"
+            type="button"
+            onClick={onTogglePlayerRenderMode}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+              playerRenderMode === 'jersey'
+                ? 'bg-sky-950/80 border-sky-500 text-sky-300 ring-1 ring-sky-500/40 shadow-sm'
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title="Cambia stile giocatori: Maglia da calcio (mezzo busto) o Cerchio"
+          >
+            {playerRenderMode === 'jersey' ? (
+              <>
+                <Shirt className="w-3.5 h-3.5 text-sky-400" />
+                <span>Maglie</span>
+              </>
+            ) : (
+              <>
+                <CircleDot className="w-3.5 h-3.5 text-amber-400" />
+                <span>Cerchi</span>
+              </>
+            )}
+          </button>
+        )}
 
         {/* Toggles (Nomi, Numeri, Foto) */}
         <div className="flex items-center gap-1 bg-slate-900/90 px-1.5 py-0.5 rounded-lg border border-slate-800">

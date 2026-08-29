@@ -110,6 +110,9 @@ export interface ExerciseDrill {
   showPlayerNames: boolean;
   showPlayerNumbers: boolean;
   showPlayerPhotos: boolean;
+  playerRenderMode?: 'circle' | 'jersey'; // 'circle' = cerchi classici, 'jersey' = maglia da calcio a mezzo busto
+  showRepartoLines?: boolean; // Linee di collegamento reparto tattico (difesa, centrocampo, attacco)
+  repartoLineColor?: string;
 }
 
 export interface TeamSettings {

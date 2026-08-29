@@ -9,6 +9,7 @@ interface PlayerMarkerProps {
   showName: boolean;
   showNumber: boolean;
   showPhoto: boolean;
+  renderMode?: 'circle' | 'jersey';
   onSelect: (player: Player) => void;
   onUpdatePosition: (id: string, x: number, y: number) => void;
   onRotate?: (id: string, angle: number) => void;
@@ -24,6 +25,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
   showName,
   showNumber,
   showPhoto,
+  renderMode = 'jersey',
   onSelect,
   onUpdatePosition,
   onRotate,
@@ -32,7 +34,6 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
   containerBounds,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [isRotating, setIsRotating] = useState(false);
   const dragStartPos = useRef<{ clientX: number; clientY: number; startX: number; startY: number }>({
     clientX: 0,
     clientY: 0,
@@ -45,6 +46,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
     if (player.customColor) {
       return {
         bg: player.customColor,
+        secondary: '#ffffff',
         text: player.customTextColor || '#ffffff',
         border: 'rgba(255,255,255,0.7)',
         glow: player.customColor,
@@ -54,6 +56,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
       case 'home':
         return {
           bg: teamSettings.homeTeamColor,
+          secondary: '#ffffff',
           text: teamSettings.homeTeamTextColor,
           border: 'rgba(255,255,255,0.85)',
           glow: teamSettings.homeTeamColor,
@@ -61,6 +64,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
       case 'away':
         return {
           bg: teamSettings.awayTeamColor,
+          secondary: '#1e293b',
           text: teamSettings.awayTeamTextColor,
           border: 'rgba(255,255,255,0.85)',
           glow: teamSettings.awayTeamColor,
@@ -69,6 +73,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
       case 'goalkeeper_away':
         return {
           bg: teamSettings.gkColor,
+          secondary: '#000000',
           text: '#0f172a',
           border: '#ffffff',
           glow: teamSettings.gkColor,
@@ -77,6 +82,7 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
       default:
         return {
           bg: teamSettings.jollyColor,
+          secondary: '#ffffff',
           text: '#ffffff',
           border: 'rgba(255,255,255,0.85)',
           glow: teamSettings.jollyColor,
@@ -163,49 +169,140 @@ export const PlayerMarker: React.FC<PlayerMarkerProps> = ({
         style={{ transform: `translate(-50%, -50%) rotate(${rotation}deg)` }}
       >
         <div
-          className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[9px] -translate-y-[26px] opacity-80"
+          className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[9px] -translate-y-[28px] opacity-90 shadow-sm"
           style={{ borderBottomColor: colors.bg }}
         />
       </div>
 
-      {/* 2. Main Player Token */}
-      <div
-        style={{
-          backgroundColor: colors.bg,
-          color: colors.text,
-          borderColor: isSelected ? '#fbbf24' : colors.border,
-          boxShadow: isSelected
-            ? `0 0 0 3px #fbbf24, 0 8px 16px rgba(0,0,0,0.4)`
-            : `0 4px 10px rgba(0,0,0,0.35)`,
-        }}
-        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center font-bold text-sm sm:text-base relative overflow-hidden transition-all duration-150 ${
-          isSelected ? 'ring-2 ring-yellow-400' : ''
-        }`}
-      >
-        {/* Photo Avatar if present */}
-        {showPhoto && player.photoUrl ? (
-          <img
-            src={player.photoUrl}
-            alt={player.name}
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover rounded-full"
-          />
-        ) : (
-          <span className="leading-none drop-shadow-sm">
-            {showNumber ? player.number : player.role}
-          </span>
-        )}
+      {/* 2. Main Player Representation: JERSEY vs CIRCLE */}
+      {renderMode === 'jersey' ? (
+        /* SOCCER JERSEY (Mezzo Busto Maglia da Calcio) */
+        <div className="relative flex flex-col items-center justify-center">
+          {/* Head & Neck / Photo */}
+          {showPhoto && player.photoUrl ? (
+            <div className="w-6 h-6 rounded-full border-2 border-white overflow-hidden shadow-md -mb-1.5 z-10 bg-slate-800">
+              <img
+                src={player.photoUrl}
+                alt={player.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-3.5 h-3.5 rounded-full border border-white/60 bg-amber-200/90 shadow-xs -mb-1 z-10" />
+          )}
 
-        {/* Small number badge overlay if photo is active */}
-        {showPhoto && player.photoUrl && showNumber && (
-          <div
-            style={{ backgroundColor: colors.bg, color: colors.text }}
-            className="absolute bottom-0 right-0 text-[9px] font-extrabold px-1 rounded-tl-md border-t border-l border-white/50 leading-tight"
-          >
-            {player.number}
+          {/* SVG Jersey Body */}
+          <div className="relative filter drop-shadow-md">
+            <svg
+              width="44"
+              height="38"
+              viewBox="0 0 100 85"
+              className="transition-transform duration-150"
+            >
+              <defs>
+                {/* Subtle vertical stripe pattern for realistic soccer kit */}
+                <pattern id={`stripes-${player.id}`} width="20" height="20" patternUnits="userSpaceOnUse">
+                  <rect width="10" height="20" fill={colors.bg} />
+                  <rect x="10" width="10" height="20" fill="rgba(255,255,255,0.08)" />
+                </pattern>
+                <filter id={`jersey-shadow-${player.id}`} x="-10%" y="-10%" width="120%" height="120%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.35" />
+                </filter>
+              </defs>
+
+              {/* Jersey Main Body & Sleeves Path */}
+              <path
+                d="M 28,14 
+                   L 6,34 
+                   L 19,48 
+                   L 28,38 
+                   L 28,82 
+                   L 72,82 
+                   L 72,38 
+                   L 81,48 
+                   L 94,34 
+                   L 72,14 
+                   L 59,20 
+                   Q 50,26 41,20 
+                   Z"
+                fill={colors.bg}
+                stroke={isSelected ? '#fbbf24' : 'rgba(255,255,255,0.85)'}
+                strokeWidth={isSelected ? '6' : '3.5'}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+
+              {/* Texture stripes */}
+              <path
+                d="M 28,38 L 28,82 L 72,82 L 72,38 Z"
+                fill={`url(#stripes-${player.id})`}
+                opacity="0.6"
+              />
+
+              {/* Collar Trim */}
+              <path
+                d="M 41,20 Q 50,27 59,20 Q 50,15 41,20 Z"
+                fill="rgba(255,255,255,0.9)"
+                stroke={colors.bg}
+                strokeWidth="1.5"
+              />
+
+              {/* Sleeve Cuffs */}
+              <line x1="6" y1="34" x2="19" y2="48" stroke="rgba(255,255,255,0.9)" strokeWidth="4" />
+              <line x1="81" y1="48" x2="94" y2="34" stroke="rgba(255,255,255,0.9)" strokeWidth="4" />
+
+              {/* Hem line */}
+              <line x1="28" y1="80" x2="72" y2="80" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+            </svg>
+
+            {/* Number or Role centered on Jersey */}
+            <div
+              style={{ color: colors.text }}
+              className="absolute inset-0 flex items-center justify-center pt-2 font-black text-sm tracking-tight leading-none pointer-events-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+            >
+              {showNumber ? player.number : player.role}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        /* CLASSIC CIRCULAR TOKEN */
+        <div
+          style={{
+            backgroundColor: colors.bg,
+            color: colors.text,
+            borderColor: isSelected ? '#fbbf24' : colors.border,
+            boxShadow: isSelected
+              ? `0 0 0 3px #fbbf24, 0 8px 16px rgba(0,0,0,0.4)`
+              : `0 4px 10px rgba(0,0,0,0.35)`,
+          }}
+          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center font-bold text-sm sm:text-base relative overflow-hidden transition-all duration-150 ${
+            isSelected ? 'ring-2 ring-yellow-400' : ''
+          }`}
+        >
+          {showPhoto && player.photoUrl ? (
+            <img
+              src={player.photoUrl}
+              alt={player.name}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover rounded-full"
+            />
+          ) : (
+            <span className="leading-none drop-shadow-sm">
+              {showNumber ? player.number : player.role}
+            </span>
+          )}
+
+          {showPhoto && player.photoUrl && showNumber && (
+            <div
+              style={{ backgroundColor: colors.bg, color: colors.text }}
+              className="absolute bottom-0 right-0 text-[9px] font-extrabold px-1 rounded-tl-md border-t border-l border-white/50 leading-tight"
+            >
+              {player.number}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3. Player Name & Role Label Badge (Below marker) */}
       {showName && (

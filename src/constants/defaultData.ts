@@ -145,6 +145,9 @@ export const DEFAULT_DRILL: ExerciseDrill = {
   showPlayerNames: true,
   showPlayerNumbers: true,
   showPlayerPhotos: true,
+  playerRenderMode: 'jersey',
+  showRepartoLines: false,
+  repartoLineColor: '#ef4444',
 };
 
 export const FORMATIONS_PRESETS: { [key: string]: { name: string; positions: { role: string; x: number; y: number }[] } } = {

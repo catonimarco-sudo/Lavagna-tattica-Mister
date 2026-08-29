@@ -3,6 +3,7 @@ import { PitchBackground } from './PitchBackground';
 import { PlayerMarker } from './PlayerMarker';
 import { EquipmentMarker } from './EquipmentMarker';
 import { DrawingCanvas } from './DrawingCanvas';
+import { RepartoLinesLayer } from './RepartoLinesLayer';
 import {
   ExerciseDrill,
   Player,
@@ -165,6 +166,16 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
           showZonesGrid={drill.showZonesGrid}
         />
 
+        {/* 1.5. Tactical Reparto Lines (Difesa, Centrocampo, Attacco) */}
+        {drill.showRepartoLines && (
+          <RepartoLinesLayer
+            players={players}
+            lineColor={drill.repartoLineColor || '#ef4444'}
+            strokeWidth={currentStrokeWidth || 3}
+            viewMode={drill.pitchView}
+          />
+        )}
+
         {/* 2. Tactical Vector Drawing Layer */}
         <DrawingCanvas
           drawings={drawings}
@@ -203,6 +214,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
             showName={drill.showPlayerNames}
             showNumber={drill.showPlayerNumbers}
             showPhoto={drill.showPlayerPhotos}
+            renderMode={drill.playerRenderMode || 'jersey'}
             onSelect={(pl) => {
               onSelectPlayer(pl);
               onSelectEquipment(null);
