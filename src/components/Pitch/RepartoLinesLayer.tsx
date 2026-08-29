@@ -26,37 +26,71 @@ export const RepartoLinesLayer: React.FC<RepartoLinesLayerProps> = ({
 
     const isVertical = viewMode === 'full_vertical';
 
-    // Categorize by standard role names if present, or partition by primary axis
+    // Grouping by tactical roles
     const defenseRoles = ['TD', 'DC', 'TS', 'DIF', 'TER'];
-    const midfieldRoles = ['MED', 'CC', 'TRQ', 'ED', 'ES', 'CEN'];
-    const attackRoles = ['ATT', 'PUN', 'ALA'];
+    const lowMidfieldRoles = ['MED'];
+    const highMidfieldRoles = ['TRQ', 'ED', 'ES', 'ALA'];
+    const centralMidfieldRoles = ['CC', 'CEN'];
+    const attackRoles = ['ATT', 'PUN'];
 
     const defs = teamPlayers.filter((p) => defenseRoles.includes(p.role.toUpperCase()));
-    const mids = teamPlayers.filter((p) => midfieldRoles.includes(p.role.toUpperCase()));
+    const lowMids = teamPlayers.filter((p) => lowMidfieldRoles.includes(p.role.toUpperCase()));
+    const highMids = teamPlayers.filter((p) => highMidfieldRoles.includes(p.role.toUpperCase()));
+    const centerMids = teamPlayers.filter((p) => centralMidfieldRoles.includes(p.role.toUpperCase()));
     const atts = teamPlayers.filter((p) => attackRoles.includes(p.role.toUpperCase()));
 
     const units: Player[][] = [];
 
-    // Sort function for a line: along pitch width
+    // Sort function for a line: along pitch lateral width
     const sortLateral = (list: Player[]) => {
       return [...list].sort((a, b) => (isVertical ? a.x - b.x : a.y - b.y));
     };
 
     if (defs.length >= 2) units.push(sortLateral(defs));
-    if (mids.length >= 2) units.push(sortLateral(mids));
+    
+    // Low midfield (e.g. double pivot / MED)
+    if (lowMids.length >= 2) {
+      units.push(sortLateral(lowMids));
+    } else if (lowMids.length === 1 && centerMids.length >= 1) {
+      units.push(sortLateral([...lowMids, ...centerMids]));
+    } else if (centerMids.length >= 2 && highMids.length === 0) {
+      units.push(sortLateral(centerMids));
+    }
+
+    // High midfield / Trequarti / Ali (e.g. 7, 10, 11)
+    if (highMids.length >= 2) {
+      units.push(sortLateral(highMids));
+    } else if (highMids.length === 1 && centerMids.length >= 1) {
+      units.push(sortLateral([...highMids, ...centerMids]));
+    }
+
     if (atts.length >= 2) units.push(sortLateral(atts));
 
-    // Fallback: If roles are not standard, cluster by depth
+    // Fallback: If roles are customized or missing, cluster by pitch depth (x in horizontal, y in vertical)
     if (units.length === 0) {
       const sortedByDepth = [...teamPlayers].sort((a, b) =>
         isVertical ? a.y - b.y : a.x - b.x
       );
-      if (sortedByDepth.length >= 4) {
-        units.push(sortLateral(sortedByDepth.slice(0, Math.ceil(sortedByDepth.length / 2))));
-        units.push(sortLateral(sortedByDepth.slice(Math.ceil(sortedByDepth.length / 2))));
-      } else if (sortedByDepth.length >= 2) {
-        units.push(sortLateral(sortedByDepth));
-      }
+      
+      const clusters: Player[][] = [];
+      let currentCluster: Player[] = [];
+
+      sortedByDepth.forEach((p) => {
+        const depthVal = isVertical ? p.y : p.x;
+        if (currentCluster.length === 0) {
+          currentCluster.push(p);
+        } else {
+          const firstDepth = isVertical ? currentCluster[0].y : currentCluster[0].x;
+          if (Math.abs(depthVal - firstDepth) <= 12) {
+            currentCluster.push(p);
+          } else {
+            if (currentCluster.length >= 2) clusters.push(sortLateral(currentCluster));
+            currentCluster = [p];
+          }
+        }
+      });
+      if (currentCluster.length >= 2) clusters.push(sortLateral(currentCluster));
+      units.push(...clusters);
     }
 
     return units;

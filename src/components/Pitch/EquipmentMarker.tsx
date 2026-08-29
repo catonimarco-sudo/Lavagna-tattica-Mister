@@ -254,8 +254,12 @@ export const EquipmentMarker: React.FC<EquipmentMarkerProps> = ({
         left: `${item.x}%`,
         top: `${item.y}%`,
         transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+        transition: isDragging
+          ? 'none'
+          : 'left 0.85s cubic-bezier(0.25, 1, 0.5, 1), top 0.85s cubic-bezier(0.25, 1, 0.5, 1), transform 0.25s ease',
+        willChange: 'left, top',
       }}
-      className={`absolute select-none cursor-grab active:cursor-grabbing z-15 group transition-transform duration-75 ${
+      className={`absolute select-none cursor-grab active:cursor-grabbing z-15 group ${
         isDragging ? 'z-40 scale-110' : ''
       }`}
       onPointerDown={handlePointerDown}

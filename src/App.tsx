@@ -53,7 +53,7 @@ export default function App() {
   // 2. Tactical Toolbar State
   const [activeTool, setActiveTool] = useState<ToolMode>('select');
   const [currentColor, setCurrentColor] = useState<string>('#ffffff');
-  const [currentStrokeWidth, setCurrentStrokeWidth] = useState<number>(3.5);
+  const [currentStrokeWidth, setCurrentStrokeWidth] = useState<number>(2.5);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -378,8 +378,10 @@ export default function App() {
   };
 
   // -------------------------------------------------------------
-  // Multi-Phase Animation Player
+  // Multi-Phase Animation Player with Smooth Fluid Transitions
   // -------------------------------------------------------------
+  const [animationSpeed, setAnimationSpeed] = useState<number>(1);
+
   const togglePlayAnimation = () => {
     if (isPlayingAnimation) {
       if (animationTimerRef.current) clearInterval(animationTimerRef.current);
@@ -389,20 +391,34 @@ export default function App() {
     }
   };
 
+  const handleStepPhase = (direction: 'prev' | 'next') => {
+    setDrill((prev) => {
+      const total = prev.phases.length;
+      if (total <= 1) return prev;
+      const nextIdx =
+        direction === 'next'
+          ? (prev.activePhaseIndex + 1) % total
+          : (prev.activePhaseIndex - 1 + total) % total;
+      return { ...prev, activePhaseIndex: nextIdx };
+    });
+  };
+
   useEffect(() => {
     if (!isPlayingAnimation) return;
+
+    const intervalMs = Math.round(2200 / animationSpeed);
 
     animationTimerRef.current = window.setInterval(() => {
       setDrill((prev) => {
         const nextIdx = (prev.activePhaseIndex + 1) % prev.phases.length;
         return { ...prev, activePhaseIndex: nextIdx };
       });
-    }, 1800);
+    }, intervalMs);
 
     return () => {
       if (animationTimerRef.current) clearInterval(animationTimerRef.current);
     };
-  }, [isPlayingAnimation, drill.phases.length]);
+  }, [isPlayingAnimation, drill.phases.length, animationSpeed]);
 
   const handleAddPhase = () => {
     const newIdx = drill.phases.length + 1;
@@ -691,6 +707,19 @@ export default function App() {
 
         {/* Animation Playback & Quick Controls */}
         <div className="flex items-center gap-2">
+          {/* Step Backwards */}
+          <button
+            id="btn-prev-phase"
+            type="button"
+            onClick={() => handleStepPhase('prev')}
+            disabled={drill.phases.length <= 1}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 rounded-xl border border-slate-700 text-xs font-bold transition-all"
+            title="Fase Precedente"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Play / Pause Toggle */}
           <button
             id="btn-play-animation"
             type="button"
@@ -700,10 +729,42 @@ export default function App() {
                 ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 animate-pulse'
                 : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25'
             }`}
+            title="Avvia / Interrompi animazione continua tra le fasi"
           >
             {isPlayingAnimation ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            <span>{isPlayingAnimation ? 'Pausa Animazione' : 'Riproduci Animazione'}</span>
+            <span>{isPlayingAnimation ? 'Pausa' : 'Riproduci'}</span>
           </button>
+
+          {/* Step Forwards */}
+          <button
+            id="btn-next-phase"
+            type="button"
+            onClick={() => handleStepPhase('next')}
+            disabled={drill.phases.length <= 1}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 rounded-xl border border-slate-700 text-xs font-bold transition-all"
+            title="Fase Successiva"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Speed Selector */}
+          <div className="hidden sm:flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-[11px] font-semibold text-slate-400">
+            {[0.75, 1, 1.5].map((speed) => (
+              <button
+                key={speed}
+                type="button"
+                onClick={() => setAnimationSpeed(speed)}
+                className={`px-2 py-0.5 rounded-lg transition-all ${
+                  animationSpeed === speed
+                    ? 'bg-sky-600 text-white shadow-xs font-bold'
+                    : 'hover:text-slate-200'
+                }`}
+                title={`Velocità animazione: ${speed}x`}
+              >
+                {speed}x
+              </button>
+            ))}
+          </div>
 
           {/* Quick Room Sync Badge in Footer */}
           <div

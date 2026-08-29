@@ -12,17 +12,17 @@ export const DEFAULT_TEAM_SETTINGS: TeamSettings = {
 };
 
 export const DEFAULT_ROSTER: Player[] = [
-  { id: 'p-1', name: 'Donnarumma G.', number: 1, role: 'POR', team: 'goalkeeper_home', foot: 'Destro', x: 7, y: 50, notes: 'Forte nelle uscite' },
-  { id: 'p-2', name: 'Di Lorenzo G.', number: 2, role: 'TD', team: 'home', foot: 'Destro', x: 25, y: 18, notes: 'Spinta e sovrapposizione' },
-  { id: 'p-3', name: 'Bastoni A.', number: 3, role: 'DC', team: 'home', foot: 'Sinistro', x: 22, y: 38, notes: 'Impostazione dal basso' },
-  { id: 'p-4', name: 'Calafiori R.', number: 4, role: 'DC', team: 'home', foot: 'Sinistro', x: 22, y: 62, notes: 'Anticipo aggressivo' },
-  { id: 'p-5', name: 'Dimarco F.', number: 5, role: 'TS', team: 'home', foot: 'Sinistro', x: 25, y: 82, notes: 'Cross e tiro da fuori' },
-  { id: 'p-6', name: 'Barella N.', number: 6, role: 'CC', team: 'home', foot: 'Destro', x: 45, y: 32, notes: 'Inserimenti senza palla' },
-  { id: 'p-7', name: 'Jorginho F.', number: 8, role: 'MED', team: 'home', foot: 'Destro', x: 38, y: 50, notes: 'Regia e tempi di gioco' },
-  { id: 'p-8', name: 'Frattesi D.', number: 7, role: 'CC', team: 'home', foot: 'Destro', x: 45, y: 68, notes: 'Goleador incursore' },
-  { id: 'p-9', name: 'Chiesa F.', number: 10, role: 'ED', team: 'home', foot: 'Destro', x: 70, y: 20, notes: '1 vs 1 e profondità' },
-  { id: 'p-10', name: 'Scamacca G.', number: 9, role: 'ATT', team: 'home', foot: 'Destro', x: 75, y: 50, notes: 'Riferimento centrale e sponde' },
-  { id: 'p-11', name: 'Zaccagni M.', number: 11, role: 'ES', team: 'home', foot: 'Destro', x: 70, y: 80, notes: 'Dribbling verso il centro' },
+  { id: 'p-1', name: 'Donnarumma G.', number: 1, role: 'POR', team: 'goalkeeper_home', foot: 'Destro', x: 7, y: 50, notes: 'Forte nelle uscite e guida del reparto' },
+  { id: 'p-2', name: 'Di Lorenzo G.', number: 2, role: 'TD', team: 'home', foot: 'Destro', x: 25, y: 18, notes: 'Spinta, ampiezza e sovrapposizione' },
+  { id: 'p-3', name: 'Bastoni A.', number: 4, role: 'DC', team: 'home', foot: 'Sinistro', x: 22, y: 38, notes: 'Impostazione dal basso e conduzione' },
+  { id: 'p-4', name: 'Calafiori R.', number: 5, role: 'DC', team: 'home', foot: 'Sinistro', x: 22, y: 62, notes: 'Anticipo aggressivo e verticalizzazioni' },
+  { id: 'p-5', name: 'Dimarco F.', number: 3, role: 'TS', team: 'home', foot: 'Sinistro', x: 25, y: 82, notes: 'Catena laterale, cross e tiro da fuori' },
+  { id: 'p-6', name: 'Barella N.', number: 6, role: 'MED', team: 'home', foot: 'Destro', x: 38, y: 38, notes: 'Equilibrio, interdizione e primi passaggi' },
+  { id: 'p-7', name: 'Kone M.', number: 8, role: 'MED', team: 'home', foot: 'Destro', x: 38, y: 62, notes: 'Dinamismo, strappi palla al piede e rottura della pressione' },
+  { id: 'p-8', name: 'Soulè M.', number: 7, role: 'ED', team: 'home', foot: 'Sinistro', x: 55, y: 18, notes: '1 vs 1 in fascia, rientro sul mancino e visione' },
+  { id: 'p-9', name: 'Catoni M.', number: 10, role: 'TRQ', team: 'home', foot: 'Destro', x: 54, y: 50, notes: 'Regia offensiva tra le linee, rifinitura e tiro' },
+  { id: 'p-10', name: 'Zaccagni M.', number: 11, role: 'ES', team: 'home', foot: 'Destro', x: 55, y: 82, notes: 'Dribbling verso il centro e attacco dell’area' },
+  { id: 'p-11', name: 'Dovbyk A.', number: 9, role: 'ATT', team: 'home', foot: 'Sinistro', x: 74, y: 50, notes: 'Riferimento centrale d’attacco, sponde e profondità' },
   
   // Riserve / Seconda squadra
   { id: 'p-12', name: 'Vicario G.', number: 12, role: 'POR', team: 'goalkeeper_away', foot: 'Destro', x: 93, y: 50, notes: 'Reattività tra i pali' },
@@ -32,15 +32,15 @@ export const DEFAULT_ROSTER: Player[] = [
   { id: 'p-16', name: 'Udogie D.', number: 16, role: 'TS', team: 'away', foot: 'Sinistro', x: 75, y: 18 },
   { id: 'p-17', name: 'Locatelli M.', number: 17, role: 'MED', team: 'away', foot: 'Destro', x: 60, y: 50 },
   { id: 'p-18', name: 'Pellegrini L.', number: 18, role: 'TRQ', team: 'away', foot: 'Destro', x: 55, y: 35 },
-  { id: 'p-19', name: 'Cristante B.', number: 19, role: 'CC', team: 'away', foot: 'Destro', x: 55, y: 65 },
+  { id: 'p-19', name: 'Frattesi D.', number: 19, role: 'CC', team: 'away', foot: 'Destro', x: 55, y: 65 },
   { id: 'p-20', name: 'Retegui M.', number: 20, role: 'ATT', team: 'away', foot: 'Destro', x: 30, y: 50 },
   { id: 'p-21', name: 'Raspadori G.', number: 21, role: 'ATT', team: 'jolly', foot: 'Ambidestro', x: 50, y: 50 },
 ];
 
 export const INITIAL_PHASE_1: TacticalPhase = {
   id: 'phase-1',
-  name: 'Fase 1: Costruzione & Sviluppo',
-  description: 'Costruzione dal basso con i 2 centrali larghi, terzini alti sulla linea laterale e vertice basso di centrocampo in appoggio.',
+  name: 'Fase 1: Costruzione & Sviluppo per Reparti',
+  description: 'Costruzione con i centrali Bastoni e Calafiori, mediana di regia con Barella e Kone M., rifinitura sulla trequarti affidata a Catoni M., Soulè M. e Zaccagni.',
   players: DEFAULT_ROSTER.slice(0, 11),
   equipment: [
     { id: 'eq-1', type: 'ball', x: 23, y: 39 },
@@ -56,24 +56,24 @@ export const INITIAL_PHASE_1: TacticalPhase = {
       id: 'draw-1',
       tool: 'arrow_pass',
       color: '#ffffff',
-      strokeWidth: 3,
-      points: [{ x: 22, y: 38 }, { x: 38, y: 50 }],
+      strokeWidth: 2.5,
+      points: [{ x: 22, y: 38 }, { x: 38, y: 62 }],
       isCompleted: true,
     },
     {
       id: 'draw-2',
-      tool: 'arrow_run',
+      tool: 'arrow_pass',
       color: '#38bdf8',
-      strokeWidth: 3,
-      points: [{ x: 25, y: 82 }, { x: 48, y: 88 }],
+      strokeWidth: 2.5,
+      points: [{ x: 38, y: 62 }, { x: 54, y: 50 }],
       isCompleted: true,
     },
     {
       id: 'draw-3',
       tool: 'arrow_run',
-      color: '#38bdf8',
-      strokeWidth: 3,
-      points: [{ x: 45, y: 68 }, { x: 62, y: 65 }],
+      color: '#fbbf24',
+      strokeWidth: 2.5,
+      points: [{ x: 55, y: 18 }, { x: 68, y: 28 }],
       isCompleted: true,
     }
   ],
@@ -81,19 +81,20 @@ export const INITIAL_PHASE_1: TacticalPhase = {
 
 export const INITIAL_PHASE_2: TacticalPhase = {
   id: 'phase-2',
-  name: 'Fase 2: Finalizzazione & Taglio',
-  description: 'Scarico sulla fascia con sovrapposizione del terzino sinistro e taglio verso il primo palo della punta centrale.',
+  name: 'Fase 2: Rifinitura Catoni M. & Taglio Soulè M.',
+  description: 'Catoni M. riceve tra le linee, orienta verso la porta e imbuca per il taglio di Soulè M. e l’attacco al primo palo di Dovbyk A.',
   players: DEFAULT_ROSTER.slice(0, 11).map(p => {
-    if (p.id === 'p-5') return { ...p, x: 68, y: 88 };
-    if (p.id === 'p-11') return { ...p, x: 74, y: 70 };
-    if (p.id === 'p-10') return { ...p, x: 86, y: 46 };
-    if (p.id === 'p-8') return { ...p, x: 76, y: 58 };
-    if (p.id === 'p-9') return { ...p, x: 82, y: 22 };
-    if (p.id === 'p-7') return { ...p, x: 55, y: 52 };
+    if (p.id === 'p-5') return { ...p, x: 62, y: 88 };
+    if (p.id === 'p-10') return { ...p, x: 74, y: 76 };
+    if (p.id === 'p-11') return { ...p, x: 86, y: 48 };
+    if (p.id === 'p-9') return { ...p, x: 68, y: 50 }; // Catoni M. avanza
+    if (p.id === 'p-8') return { ...p, x: 75, y: 30 }; // Soulè M. taglia dentro
+    if (p.id === 'p-7') return { ...p, x: 50, y: 60 }; // Kone M. sostiene
+    if (p.id === 'p-6') return { ...p, x: 46, y: 40 }; // Barella N.
     return p;
   }),
   equipment: [
-    { id: 'eq-1', type: 'ball', x: 69, y: 87 },
+    { id: 'eq-1', type: 'ball', x: 68, y: 50 },
     { id: 'eq-2', type: 'flat_cone_yellow', x: 35, y: 25 },
     { id: 'eq-3', type: 'flat_cone_yellow', x: 35, y: 75 },
     { id: 'eq-4', type: 'flat_cone_red', x: 60, y: 25 },
@@ -106,16 +107,16 @@ export const INITIAL_PHASE_2: TacticalPhase = {
       id: 'draw-4',
       tool: 'arrow_pass',
       color: '#ffffff',
-      strokeWidth: 3,
-      points: [{ x: 69, y: 87 }, { x: 86, y: 46 }],
+      strokeWidth: 2.5,
+      points: [{ x: 68, y: 50 }, { x: 75, y: 30 }],
       isCompleted: true,
     },
     {
       id: 'draw-5',
       tool: 'arrow_curve',
       color: '#fbbf24',
-      strokeWidth: 3,
-      points: [{ x: 82, y: 22 }, { x: 88, y: 38 }, { x: 92, y: 48 }],
+      strokeWidth: 2.5,
+      points: [{ x: 75, y: 30 }, { x: 84, y: 38 }, { x: 88, y: 48 }],
       isCompleted: true,
     }
   ],
@@ -123,19 +124,19 @@ export const INITIAL_PHASE_2: TacticalPhase = {
 
 export const DEFAULT_DRILL: ExerciseDrill = {
   id: 'drill-default-1',
-  title: 'Costruzione dal Basso e Sovrapposizione Laterale',
+  title: 'Costruzione Tattica e Sviluppo per Reparti (4-2-3-1)',
   category: 'Tattica',
-  objectivePrimary: 'Superamento della prima linea di pressione avversaria tramite catena laterale',
-  objectiveSecondary: 'Tempi di inserimento del centrocampista e cross in area di rigore',
+  objectivePrimary: 'Mantenimento delle distanze di reparto tra linea difensiva (2-4-5-3), mediana (6-8) e trequarti (7-10-11)',
+  objectiveSecondary: 'Rifinitura con Catoni M. tra le linee e supporto sulle corsie di Soulè M. e Dimarco F.',
   durationMinutes: 20,
   playerCount: '11 vs 0 (poi 11 vs 8)',
   pitchSize: 'Campo Intero / 3/4 di campo',
-  description: 'La palla parte dal portiere o dal difensore centrale. Si ricerca la superiorità numerica sul lato forte attirando la pressione e attaccando lo spazio libero alle spalle della difesa.',
+  description: 'La palla parte dal portiere o dalla linea difensiva. Si attiva il doppio perno centrale (Barella-Kone M.) per superare la prima linea di pressione e verticalizzare sul trequartista Catoni M., innescando la rifinitura per Soulè M. e Dovbyk A.',
   coachingPoints: [
-    'Ricezione orientata verso avanti dei difensori centrali',
-    'Terzini sempre aperti a dare massima ampiezza prima della ricezione',
-    'Vertice basso in costante movimento per offrire linea di passaggio pulita',
-    'Attacco alla profondità con tempi precisi (evitare il fuorigioco)'
+    'Linea difensiva compatta e scaglionata per impedire imbucate centrali',
+    'Doppio perno di centrocampo sempre in diagonale di sostegno',
+    'Catoni M. riceve tra le linee con orientamento posturale verso la porta',
+    'Attacco simultaneo del primo palo e dello spazio a rimorchio'
   ],
   phases: [INITIAL_PHASE_1, INITIAL_PHASE_2],
   activePhaseIndex: 0,
@@ -146,7 +147,7 @@ export const DEFAULT_DRILL: ExerciseDrill = {
   showPlayerNumbers: true,
   showPlayerPhotos: true,
   playerRenderMode: 'jersey',
-  showRepartoLines: false,
+  showRepartoLines: true,
   repartoLineColor: '#ef4444',
 };
 

@@ -88,9 +88,128 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
     drawings: [],
   };
 
-  const players = activePhase.players || [];
-  const equipment = activePhase.equipment || [];
+  const targetPlayers = activePhase.players || [];
+  const targetEquipment = activePhase.equipment || [];
   const drawings = activePhase.drawings || [];
+
+  // Frame-interpolated positions for fluid motion & synchronous reparto lines
+  const [interpolatedPlayers, setInterpolatedPlayers] = useState<Player[]>(targetPlayers);
+  const [interpolatedEquipment, setInterpolatedEquipment] = useState<EquipmentItem[]>(targetEquipment);
+
+  const prevPhaseIdRef = useRef<string>(activePhase.id);
+  const prevPlayersPosRef = useRef<Map<string, { x: number; y: number; rotation?: number }>>(new Map());
+  const prevEquipmentPosRef = useRef<Map<string, { x: number; y: number; rotation?: number }>>(new Map());
+  const animationFrameRef = useRef<number | null>(null);
+
+  // Easing function for natural organic fluid movement
+  const easeInOutCubic = (t: number) => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+
+  useEffect(() => {
+    const isPhaseChanged = prevPhaseIdRef.current !== activePhase.id;
+    prevPhaseIdRef.current = activePhase.id;
+
+    if (!isPhaseChanged) {
+      // Direct update when user is editing current phase in real-time
+      setInterpolatedPlayers(targetPlayers);
+      setInterpolatedEquipment(targetEquipment);
+
+      // Keep cache updated
+      targetPlayers.forEach((p) =>
+        prevPlayersPosRef.current.set(p.id, { x: p.x, y: p.y, rotation: p.rotation })
+      );
+      targetEquipment.forEach((eq) =>
+        prevEquipmentPosRef.current.set(eq.id, { x: eq.x, y: eq.y, rotation: eq.rotation })
+      );
+      return;
+    }
+
+    // Phase changed: smoothly interpolate positions over 850ms
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const startTime = performance.now();
+    const duration = 850;
+
+    const startPlayersMap = new Map<string, { x: number; y: number; rotation?: number }>(
+      prevPlayersPosRef.current
+    );
+    const startEquipmentMap = new Map<string, { x: number; y: number; rotation?: number }>(
+      prevEquipmentPosRef.current
+    );
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = easeInOutCubic(progress);
+
+      // 1. Interpolate Players
+      const currentInterpolatedPlayers = targetPlayers.map((target) => {
+        const start = startPlayersMap.get(target.id);
+        if (!start) return target;
+
+        const currentX = Number((start.x + (target.x - start.x) * eased).toFixed(2));
+        const currentY = Number((start.y + (target.y - start.y) * eased).toFixed(2));
+        const currentRot =
+          start.rotation !== undefined && target.rotation !== undefined
+            ? start.rotation + (target.rotation - start.rotation) * eased
+            : target.rotation;
+
+        return {
+          ...target,
+          x: currentX,
+          y: currentY,
+          rotation: currentRot,
+        };
+      });
+
+      // 2. Interpolate Equipment
+      const currentInterpolatedEquipment = targetEquipment.map((target) => {
+        const start = startEquipmentMap.get(target.id);
+        if (!start) return target;
+
+        const currentX = Number((start.x + (target.x - start.x) * eased).toFixed(2));
+        const currentY = Number((start.y + (target.y - start.y) * eased).toFixed(2));
+        const currentRot =
+          start.rotation !== undefined && target.rotation !== undefined
+            ? start.rotation + (target.rotation - start.rotation) * eased
+            : target.rotation;
+
+        return {
+          ...target,
+          x: currentX,
+          y: currentY,
+          rotation: currentRot,
+        };
+      });
+
+      setInterpolatedPlayers(currentInterpolatedPlayers);
+      setInterpolatedEquipment(currentInterpolatedEquipment);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(step);
+      } else {
+        setInterpolatedPlayers(targetPlayers);
+        setInterpolatedEquipment(targetEquipment);
+        targetPlayers.forEach((p) =>
+          prevPlayersPosRef.current.set(p.id, { x: p.x, y: p.y, rotation: p.rotation })
+        );
+        targetEquipment.forEach((eq) =>
+          prevEquipmentPosRef.current.set(eq.id, { x: eq.x, y: eq.y, rotation: eq.rotation })
+        );
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [activePhase.id, targetPlayers, targetEquipment]);
 
   // Handle Drag Over & Drop from bench/roster or toolbar
   const handleDragOver = (e: React.DragEvent) => {
@@ -169,7 +288,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
         {/* 1.5. Tactical Reparto Lines (Difesa, Centrocampo, Attacco) */}
         {drill.showRepartoLines && (
           <RepartoLinesLayer
-            players={players}
+            players={interpolatedPlayers}
             lineColor={drill.repartoLineColor || '#ef4444'}
             strokeWidth={currentStrokeWidth || 3}
             viewMode={drill.pitchView}
@@ -188,7 +307,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
         />
 
         {/* 3. Equipment Layer */}
-        {equipment.map((item) => (
+        {interpolatedEquipment.map((item) => (
           <EquipmentMarker
             key={item.id}
             item={item}
@@ -205,7 +324,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
         ))}
 
         {/* 4. Players Layer */}
-        {players.map((player) => (
+        {interpolatedPlayers.map((player) => (
           <PlayerMarker
             key={player.id}
             player={player}
