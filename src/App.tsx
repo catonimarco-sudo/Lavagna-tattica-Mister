@@ -50,10 +50,71 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // 1. Core State
-  const [drill, setDrill] = useState<ExerciseDrill>(DEFAULT_DRILL);
-  const [roster, setRoster] = useState<Player[]>(DEFAULT_ROSTER);
-  const [teamSettings, setTeamSettings] = useState<TeamSettings>(DEFAULT_TEAM_SETTINGS);
+  // 1. Initialize Core State from saved local storage immediately if present (prevents resetting on mount)
+  const [roomId, setRoomId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) return roomParam.toUpperCase().trim();
+      const savedRoom = localStorage.getItem('mister_tactics_active_room_v4');
+      if (savedRoom) return savedRoom.toUpperCase().trim();
+    }
+    return 'MISTER-CALCIO-ROOM-1';
+  });
+
+  const [drill, setDrill] = useState<ExerciseDrill>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const activeRoom = localStorage.getItem('mister_tactics_active_room_v4') || 'MISTER-CALCIO-ROOM-1';
+        const raw = localStorage.getItem(`mister_tactics_state_v4_${activeRoom.toUpperCase().trim()}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.drill && parsed.drill.phases && parsed.drill.phases.length > 0) {
+            return parsed.drill;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not restore saved drill:', e);
+      }
+    }
+    return DEFAULT_DRILL;
+  });
+
+  const [roster, setRoster] = useState<Player[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const activeRoom = localStorage.getItem('mister_tactics_active_room_v4') || 'MISTER-CALCIO-ROOM-1';
+        const raw = localStorage.getItem(`mister_tactics_state_v4_${activeRoom.toUpperCase().trim()}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.roster && parsed.roster.length > 0) {
+            return parsed.roster;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not restore saved roster:', e);
+      }
+    }
+    return DEFAULT_ROSTER;
+  });
+
+  const [teamSettings, setTeamSettings] = useState<TeamSettings>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const activeRoom = localStorage.getItem('mister_tactics_active_room_v4') || 'MISTER-CALCIO-ROOM-1';
+        const raw = localStorage.getItem(`mister_tactics_state_v4_${activeRoom.toUpperCase().trim()}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.teamSettings) {
+            return parsed.teamSettings;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not restore saved teamSettings:', e);
+      }
+    }
+    return DEFAULT_TEAM_SETTINGS;
+  });
 
   // 2. Tactical Toolbar State
   const [activeTool, setActiveTool] = useState<ToolMode>('select');
@@ -80,7 +141,6 @@ export default function App() {
   const [editingPhaseName, setEditingPhaseName] = useState<string>('');
 
   // 6. Realtime Cloud Sync State (AI Studio <-> Vercel Live Sync)
-  const [roomId, setRoomId] = useState<string>('MISTER-CALCIO-ROOM-1');
   const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const syncService = useRef(RealtimeSyncService.getInstance()).current;
