@@ -110,18 +110,29 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
     const isPhaseChanged = prevPhaseIdRef.current !== activePhase.id;
     prevPhaseIdRef.current = activePhase.id;
 
-    if (!isPhaseChanged) {
-      // Direct update when user is editing current phase in real-time
+    if (!isPhaseChanged || (targetPlayers.length === 0 && targetEquipment.length === 0)) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      // Direct update when user is editing current phase or field was emptied
       setInterpolatedPlayers(targetPlayers);
       setInterpolatedEquipment(targetEquipment);
 
-      // Keep cache updated
-      targetPlayers.forEach((p) =>
-        prevPlayersPosRef.current.set(p.id, { x: p.x, y: p.y, rotation: p.rotation })
-      );
-      targetEquipment.forEach((eq) =>
-        prevEquipmentPosRef.current.set(eq.id, { x: eq.x, y: eq.y, rotation: eq.rotation })
-      );
+      if (targetPlayers.length === 0) {
+        prevPlayersPosRef.current.clear();
+      } else {
+        targetPlayers.forEach((p) =>
+          prevPlayersPosRef.current.set(p.id, { x: p.x, y: p.y, rotation: p.rotation })
+        );
+      }
+
+      if (targetEquipment.length === 0) {
+        prevEquipmentPosRef.current.clear();
+      } else {
+        targetEquipment.forEach((eq) =>
+          prevEquipmentPosRef.current.set(eq.id, { x: eq.x, y: eq.y, rotation: eq.rotation })
+        );
+      }
       return;
     }
 
@@ -345,6 +356,19 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
             containerBounds={containerBounds}
           />
         ))}
+
+        {/* Empty Pitch State Watermark (Non-blocking) */}
+        {interpolatedPlayers.length === 0 && interpolatedEquipment.length === 0 && drawings.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none p-4">
+            <div className="bg-slate-950/70 backdrop-blur-sm border border-slate-700/60 rounded-2xl px-6 py-4 text-center max-w-sm shadow-2xl">
+              <div className="text-2xl mb-1">📋</div>
+              <div className="text-sm font-bold text-white mb-1">Campo Svuotato</div>
+              <div className="text-xs text-slate-300">
+                Trascina o clicca sui pulsanti della barra in alto per inserire calciatori, birilli, cinesini, palloni e tracciare schemi.
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

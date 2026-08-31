@@ -142,20 +142,41 @@ export default function App() {
   }, [drill, roster, teamSettings, roomId]);
 
   // Phase Helpers
-  const currentPhaseIndex = drill.activePhaseIndex || 0;
-  const currentPhase = drill.phases[currentPhaseIndex] || drill.phases[0];
+  const currentPhaseIndex = (typeof drill.activePhaseIndex === 'number' && drill.activePhaseIndex >= 0)
+    ? drill.activePhaseIndex
+    : 0;
+  const currentPhase = drill.phases[currentPhaseIndex] || drill.phases[0] || {
+    id: 'p-default',
+    name: 'Fase 1',
+    description: '',
+    players: [],
+    equipment: [],
+    drawings: [],
+  };
 
   // Helper to update current active phase
   const updateCurrentPhase = useCallback(
     (updater: (prevPhase: typeof currentPhase) => typeof currentPhase) => {
       setDrill((prevDrill) => {
+        const activeIdx = (typeof prevDrill.activePhaseIndex === 'number' && prevDrill.activePhaseIndex >= 0)
+          ? prevDrill.activePhaseIndex
+          : 0;
         const updatedPhases = [...prevDrill.phases];
-        const activeIdx = prevDrill.activePhaseIndex;
-        if (!updatedPhases[activeIdx]) return prevDrill;
-
-        updatedPhases[activeIdx] = updater(updatedPhases[activeIdx]);
+        if (updatedPhases.length === 0) {
+          updatedPhases.push({
+            id: `phase-${Date.now()}`,
+            name: 'Fase 1',
+            description: '',
+            players: [],
+            equipment: [],
+            drawings: [],
+          });
+        }
+        const targetIdx = updatedPhases[activeIdx] ? activeIdx : 0;
+        updatedPhases[targetIdx] = updater(updatedPhases[targetIdx]);
         return {
           ...prevDrill,
+          activePhaseIndex: targetIdx,
           phases: updatedPhases,
         };
       });
@@ -188,17 +209,51 @@ export default function App() {
     if (selectedPlayerId === id) setSelectedPlayerId(null);
   };
 
-  const handleAddPlayerToPitch = (team: 'home' | 'away' | 'goalkeeper_home' | 'jolly') => {
+  const handleAddPlayerToPitch = (
+    team: 'home' | 'away' | 'goalkeeper_home' | 'goalkeeper_away' | 'jolly',
+    customX?: number,
+    customY?: number,
+    specificPlayerId?: string
+  ) => {
+    const targetX = customX !== undefined ? customX : Math.max(8, Math.min(92, 45 + (Math.random() * 14 - 7)));
+    const targetY = customY !== undefined ? customY : Math.max(8, Math.min(92, 45 + (Math.random() * 14 - 7)));
+
+    if (specificPlayerId) {
+      const rosterPlayer = roster.find((p) => p.id === specificPlayerId);
+      if (rosterPlayer) {
+        const alreadyOnPitch = currentPhase.players.some((p) => p.id === specificPlayerId);
+        if (alreadyOnPitch) {
+          updateCurrentPhase((phase) => ({
+            ...phase,
+            players: phase.players.map((p) =>
+              p.id === specificPlayerId ? { ...p, x: targetX, y: targetY } : p
+            ),
+          }));
+        } else {
+          updateCurrentPhase((phase) => ({
+            ...phase,
+            players: [...phase.players, { ...rosterPlayer, x: targetX, y: targetY }],
+          }));
+        }
+        return;
+      }
+    }
+
     // Find next available player from roster or generate new one
     const availableFromRoster = roster.find(
-      (r) => (r.team === team || (team === 'home' && r.team === 'goalkeeper_home')) && !currentPhase.players.some((p) => p.id === r.id)
+      (r) =>
+        (r.team === team ||
+          (team === 'home' && r.team === 'goalkeeper_home') ||
+          (team === 'goalkeeper_home' && (r.role === 'POR' || r.team === 'goalkeeper_home'))) &&
+        !currentPhase.players.some((p) => p.id === r.id)
     );
 
     if (availableFromRoster) {
       const newPlayerInstance: Player = {
         ...availableFromRoster,
-        x: 50,
-        y: 50,
+        team: team === 'goalkeeper_home' ? 'goalkeeper_home' : availableFromRoster.team,
+        x: targetX,
+        y: targetY,
       };
       updateCurrentPhase((phase) => ({
         ...phase,
@@ -213,8 +268,8 @@ export default function App() {
         role: team === 'goalkeeper_home' ? 'POR' : 'CC',
         team,
         foot: 'Destro',
-        x: 50,
-        y: 50,
+        x: targetX,
+        y: targetY,
       };
       setRoster((prev) => [...prev, newPl]);
       updateCurrentPhase((phase) => ({
@@ -227,12 +282,14 @@ export default function App() {
   // -------------------------------------------------------------
   // Equipment Operations
   // -------------------------------------------------------------
-  const handleAddEquipment = (type: EquipmentType, x: number = 50, y: number = 50) => {
+  const handleAddEquipment = (type: EquipmentType, x?: number, y?: number) => {
+    const targetX = x !== undefined ? x : Number((45 + (Math.random() * 16 - 8)).toFixed(2));
+    const targetY = y !== undefined ? y : Number((45 + (Math.random() * 16 - 8)).toFixed(2));
     const newItem: EquipmentItem = {
       id: `eq-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type,
-      x,
-      y,
+      x: targetX,
+      y: targetY,
       rotation: 0,
     };
     updateCurrentPhase((phase) => ({
@@ -264,7 +321,7 @@ export default function App() {
   };
 
   // -------------------------------------------------------------
-  // Tactical Drawings & Undo / Redo
+  // Tactical Drawings & Undo / Redo / Clear Pitch Commands
   // -------------------------------------------------------------
   const handleAddDrawing = (drawing: DrawingElement) => {
     setUndoStack((prev) => [...prev, currentPhase.drawings]);
@@ -318,8 +375,65 @@ export default function App() {
     }));
   };
 
+  // Svuota Campo Completo (Fase Corrente): Rimuove tutti i giocatori, coni, palloni e disegni
+  const handleClearPitchCurrentPhase = () => {
+    setSelectedPlayerId(null);
+    setSelectedEquipmentId(null);
+    setEditingPlayer(null);
+    setUndoStack((prev) => [...prev, currentPhase.drawings]);
+    setRedoStack([]);
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: [],
+      equipment: [],
+      drawings: [],
+    }));
+  };
+
+  // Svuota Tutto l'Esercizio (Tutte le Fasi): Ripristina 1 singola fase vuota da zero
+  const handleClearAllPhases = () => {
+    setSelectedPlayerId(null);
+    setSelectedEquipmentId(null);
+    setEditingPlayer(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    setDrill((prev) => ({
+      ...prev,
+      activePhaseIndex: 0,
+      phases: [
+        {
+          id: `phase-${Date.now()}`,
+          name: 'Fase 1',
+          description: 'Fase iniziale vuota',
+          players: [],
+          equipment: [],
+          drawings: [],
+        },
+      ],
+    }));
+  };
+
+  // Rimuovi Solo Giocatori dal campo nella fase attiva
+  const handleClearPlayersOnly = () => {
+    setSelectedPlayerId(null);
+    setEditingPlayer(null);
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      players: [],
+    }));
+  };
+
+  // Rimuovi Solo Coni & Attrezzatura dal campo nella fase attiva
+  const handleClearEquipmentOnly = () => {
+    setSelectedEquipmentId(null);
+    updateCurrentPhase((phase) => ({
+      ...phase,
+      equipment: [],
+    }));
+  };
+
   // -------------------------------------------------------------
-  // Drag and Drop from Tray onto Pitch
+  // Drag and Drop from Tray / Roster onto Pitch
   // -------------------------------------------------------------
   const handleDropNewItem = (
     type: 'player' | EquipmentType,
@@ -329,7 +443,8 @@ export default function App() {
   ) => {
     if (type === 'player') {
       const team = data?.team || 'home';
-      handleAddPlayerToPitch(team);
+      const playerId = data?.playerId;
+      handleAddPlayerToPitch(team, x, y, playerId);
     } else {
       handleAddEquipment(type as EquipmentType, x, y);
     }
@@ -605,6 +720,10 @@ export default function App() {
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
         onClearDrawings={handleClearDrawings}
+        onClearPitch={handleClearPitchCurrentPhase}
+        onClearAllPhases={handleClearAllPhases}
+        onClearPlayersOnly={handleClearPlayersOnly}
+        onClearEquipmentOnly={handleClearEquipmentOnly}
         onAddEquipment={(type) => handleAddEquipment(type)}
         onAddPlayer={handleAddPlayerToPitch}
         showZonesGrid={drill.showZonesGrid}

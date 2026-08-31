@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ToolMode, EquipmentType } from '../../types';
 import {
   MousePointer,
@@ -19,6 +19,11 @@ import {
   Plus,
   Sliders,
   Grid,
+  ChevronDown,
+  Sparkles,
+  Users,
+  Shield,
+  Layers,
 } from 'lucide-react';
 
 interface TacticalToolbarProps {
@@ -33,8 +38,12 @@ interface TacticalToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   onClearDrawings: () => void;
+  onClearPitch?: () => void;
+  onClearAllPhases?: () => void;
+  onClearPlayersOnly?: () => void;
+  onClearEquipmentOnly?: () => void;
   onAddEquipment: (type: EquipmentType) => void;
-  onAddPlayer: (team: 'home' | 'away' | 'goalkeeper_home' | 'jolly') => void;
+  onAddPlayer: (team: 'home' | 'away' | 'goalkeeper_home' | 'goalkeeper_away' | 'jolly') => void;
   showZonesGrid: boolean;
   onToggleZonesGrid: () => void;
 }
@@ -61,11 +70,33 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
   canUndo,
   canRedo,
   onClearDrawings,
+  onClearPitch,
+  onClearAllPhases,
+  onClearPlayersOnly,
+  onClearEquipmentOnly,
   onAddEquipment,
   onAddPlayer,
   showZonesGrid,
   onToggleZonesGrid,
 }) => {
+  const [isClearMenuOpen, setIsClearMenuOpen] = useState(false);
+  const clearMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close clear menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (clearMenuRef.current && !clearMenuRef.current.contains(e.target as Node)) {
+        setIsClearMenuOpen(false);
+      }
+    };
+    if (isClearMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isClearMenuOpen]);
+
   // Equipment Drag Starter
   const handleEquipmentDragStart = (e: React.DragEvent, type: EquipmentType) => {
     e.dataTransfer.setData('application/json', JSON.stringify({ type }));
@@ -295,15 +326,133 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
           <Redo2 className="w-4 h-4" />
         </button>
 
-        <button
-          id="btn-clear-drawings"
-          type="button"
-          onClick={onClearDrawings}
-          className="p-1.5 bg-slate-800 hover:bg-red-900/60 rounded-lg text-red-400 hover:text-red-300"
-          title="Cancella tutti i disegni del campo"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {/* Svuota Tutto Direct Action + Options Menu */}
+        <div className="relative flex items-stretch rounded-lg shadow-sm" ref={clearMenuRef}>
+          <button
+            id="btn-svuota-tutto-direct"
+            type="button"
+            onClick={() => {
+              setIsClearMenuOpen(false);
+              if (onClearPitch) {
+                onClearPitch();
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 text-red-200 hover:text-white rounded-l-lg text-xs font-bold border-y border-l border-red-700/80 transition-all active:scale-95"
+            title="Svuota immediatamente il campo (rimuove tutti i calciatori, coni, palloni e disegni dalla fase attiva)"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            <span>Svuota Tutto</span>
+          </button>
+
+          <button
+            id="btn-svuota-tutto-menu-arrow"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsClearMenuOpen((prev) => !prev);
+            }}
+            className="px-1.5 py-1.5 bg-red-950/80 hover:bg-red-900 text-red-400 hover:text-white rounded-r-lg border border-red-700/80 transition-all"
+            title="Altre opzioni di svuotamento (Tutte le fasi, Solo coni, Solo giocatori, ecc.)"
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isClearMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isClearMenuOpen && (
+            <div className="absolute left-0 top-full mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="px-2 py-1 border-b border-slate-800 mb-1">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                  Opzioni Svuota Campo
+                </span>
+              </div>
+
+              {/* 1. Svuota Campo Completo (Fase Attuale) */}
+              <button
+                id="btn-action-clear-pitch-current"
+                type="button"
+                onClick={() => {
+                  setIsClearMenuOpen(false);
+                  if (onClearPitch) {
+                    onClearPitch();
+                  }
+                }}
+                className="w-full text-left px-2.5 py-2 hover:bg-red-900/40 rounded-lg text-xs text-red-300 hover:text-white font-semibold flex items-center gap-2 transition-colors"
+              >
+                <Trash2 className="w-4 h-4 text-red-400 shrink-0" />
+                <div>
+                  <div className="font-bold">Svuota Campo (Fase Attuale)</div>
+                  <div className="text-[10px] text-slate-400 font-normal">Rimuove calciatori, coni, palloni e disegni</div>
+                </div>
+              </button>
+
+              {/* 2. Svuota Tutto l'Esercizio (Tutte le Fasi) */}
+              {onClearAllPhases && (
+                <button
+                  id="btn-action-clear-all-phases"
+                  type="button"
+                  onClick={() => {
+                    setIsClearMenuOpen(false);
+                    if (window.confirm('Vuoi azzerare completamente l\'intero esercizio (tutte le fasi)?')) {
+                      onClearAllPhases();
+                    }
+                  }}
+                  className="w-full text-left px-2.5 py-2 hover:bg-red-900/60 rounded-lg text-xs text-red-200 hover:text-white font-semibold flex items-center gap-2 transition-colors border-t border-slate-800/80 mt-1"
+                >
+                  <Layers className="w-4 h-4 text-red-400 shrink-0" />
+                  <div>
+                    <div className="font-bold">Azzera Intero Esercizio</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Ripristina 1 singola fase completamente vuota</div>
+                  </div>
+                </button>
+              )}
+
+              {/* 3. Rimuovi Solo Calciatori */}
+              {onClearPlayersOnly && (
+                <button
+                  id="btn-action-clear-players-only"
+                  type="button"
+                  onClick={() => {
+                    setIsClearMenuOpen(false);
+                    onClearPlayersOnly();
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 hover:text-white font-medium flex items-center gap-2 transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Rimuovi solo Calciatori</span>
+                </button>
+              )}
+
+              {/* 4. Rimuovi Solo Attrezzatura (Coni, Palloni, ecc.) */}
+              {onClearEquipmentOnly && (
+                <button
+                  id="btn-action-clear-equipment-only"
+                  type="button"
+                  onClick={() => {
+                    setIsClearMenuOpen(false);
+                    onClearEquipmentOnly();
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 hover:text-white font-medium flex items-center gap-2 transition-colors"
+                >
+                  <span className="text-orange-400 text-xs">▲</span>
+                  <span>Rimuovi solo Coni & Attrezzatura</span>
+                </button>
+              )}
+
+              {/* 5. Cancella Solo Disegni */}
+              <button
+                id="btn-action-clear-drawings-only"
+                type="button"
+                onClick={() => {
+                  setIsClearMenuOpen(false);
+                  onClearDrawings();
+                }}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs text-slate-200 hover:text-white font-medium flex items-center gap-2 transition-colors"
+              >
+                <Eraser className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Cancella solo Disegni & Tratti</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 2. Colors, Stroke Width & Tactical Zones Toggle */}
@@ -389,7 +538,7 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
         <div className="flex items-center gap-1 text-xs text-slate-400">
           <span className="font-semibold text-slate-200 mr-1 flex items-center gap-1">
             <Plus className="w-3.5 h-3.5 text-sky-400" />
-            Attrezzatura & Coni:
+            Attrezzatura & Birilli:
           </span>
 
           {/* Conetto Alto */}
@@ -400,7 +549,7 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'cone')}
             onClick={() => onAddEquipment('cone')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-orange-300 cursor-grab active:cursor-grabbing hover:border-orange-500 transition-colors"
-            title="Trascina sul campo o clicca per inserire"
+            title="Trascina sul campo o clicca per inserire Conetto Alto"
           >
             <span className="text-sm leading-none">▲</span> Conetto
           </button>
@@ -413,6 +562,7 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'flat_cone_yellow')}
             onClick={() => onAddEquipment('flat_cone_yellow')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-yellow-300 cursor-grab active:cursor-grabbing hover:border-yellow-500 transition-colors"
+            title="Cinesino Piatto Giallo"
           >
             <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> Cinesino Giallo
           </button>
@@ -425,6 +575,7 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'flat_cone_red')}
             onClick={() => onAddEquipment('flat_cone_red')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-red-300 cursor-grab active:cursor-grabbing hover:border-red-500 transition-colors"
+            title="Cinesino Piatto Rosso"
           >
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Cinesino Rosso
           </button>
@@ -437,11 +588,12 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'flat_cone_blue')}
             onClick={() => onAddEquipment('flat_cone_blue')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-blue-300 cursor-grab active:cursor-grabbing hover:border-blue-500 transition-colors"
+            title="Cinesino Piatto Blu"
           >
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Cinesino Blu
           </button>
 
-          {/* Pallone */}
+          {/* Pallone da calcio */}
           <button
             id="btn-add-ball"
             type="button"
@@ -449,6 +601,7 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'ball')}
             onClick={() => onAddEquipment('ball')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-white font-medium cursor-grab active:cursor-grabbing hover:border-white transition-colors"
+            title="Pallone da Calcio"
           >
             <span className="text-sm">⚽</span> Pallone
           </button>
@@ -461,32 +614,35 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             onDragStart={(e) => handleEquipmentDragStart(e, 'mini_goal')}
             onClick={() => onAddEquipment('mini_goal')}
             className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-slate-200 cursor-grab active:cursor-grabbing hover:border-slate-400 transition-colors"
+            title="Porticina da Allenamento"
           >
             <span className="text-sm">🥅</span> Porticina
           </button>
 
-          {/* Scaletta */}
-          <button
-            id="btn-add-ladder"
-            type="button"
-            draggable
-            onDragStart={(e) => handleEquipmentDragStart(e, 'agility_ladder')}
-            onClick={() => onAddEquipment('agility_ladder')}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-yellow-300 cursor-grab active:cursor-grabbing"
-          >
-            <span className="text-xs">🪜</span> Scaletta
-          </button>
-
-          {/* Paletto Slalom */}
+          {/* Paletto / Birillo Slalom */}
           <button
             id="btn-add-pole"
             type="button"
             draggable
             onDragStart={(e) => handleEquipmentDragStart(e, 'pole')}
             onClick={() => onAddEquipment('pole')}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-amber-300 cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-amber-300 cursor-grab active:cursor-grabbing hover:border-amber-400 transition-colors"
+            title="Paletto / Birillo Slalom"
           >
-            <span className="text-xs">📍</span> Paletto
+            <span className="text-xs">📍</span> Birillo / Paletto
+          </button>
+
+          {/* Scaletta Agilità */}
+          <button
+            id="btn-add-ladder"
+            type="button"
+            draggable
+            onDragStart={(e) => handleEquipmentDragStart(e, 'agility_ladder')}
+            onClick={() => onAddEquipment('agility_ladder')}
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-yellow-300 cursor-grab active:cursor-grabbing hover:border-yellow-400 transition-colors"
+            title="Scaletta di Coordinazione & Agilità"
+          >
+            <span className="text-xs">🪜</span> Scaletta
           </button>
 
           {/* Sagoma Barriera */}
@@ -496,7 +652,8 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             draggable
             onDragStart={(e) => handleEquipmentDragStart(e, 'mannequin')}
             onClick={() => onAddEquipment('mannequin')}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-sky-300 cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-sky-300 cursor-grab active:cursor-grabbing hover:border-sky-400 transition-colors"
+            title="Sagoma Uomo Barriera"
           >
             <span className="text-xs">👤</span> Sagoma
           </button>
@@ -508,7 +665,8 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             draggable
             onDragStart={(e) => handleEquipmentDragStart(e, 'hurdle')}
             onClick={() => onAddEquipment('hurdle')}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-yellow-300 cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-yellow-300 cursor-grab active:cursor-grabbing hover:border-yellow-400 transition-colors"
+            title="Ostacolo da Scavalcare"
           >
             <span className="text-xs">⊓</span> Ostacolo
           </button>
@@ -520,7 +678,8 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             draggable
             onDragStart={(e) => handleEquipmentDragStart(e, 'hoop')}
             onClick={() => onAddEquipment('hoop')}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-green-400 cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-[11px] text-green-400 cursor-grab active:cursor-grabbing hover:border-green-400 transition-colors"
+            title="Cerchio Coordinativo"
           >
             <span className="text-xs">⭕</span> Cerchio
           </button>
@@ -529,13 +688,26 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
         {/* Quick Add Player Buttons */}
         <div className="flex items-center gap-1 shrink-0">
           <button
+            id="btn-spawn-gk-player"
+            type="button"
+            draggable
+            onDragStart={(e) => handlePlayerDragStart(e, 'goalkeeper_home')}
+            onClick={() => onAddPlayer('goalkeeper_home')}
+            className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded text-[11px] font-extrabold shadow flex items-center gap-0.5 cursor-grab active:cursor-grabbing transition-colors"
+            title="Trascina o clicca per inserire Portiere (Giallo/Verde)"
+          >
+            <Shield className="w-3 h-3" />
+            + POR
+          </button>
+
+          <button
             id="btn-spawn-home-player"
             type="button"
             draggable
             onDragStart={(e) => handlePlayerDragStart(e, 'home')}
             onClick={() => onAddPlayer('home')}
-            className="px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-1"
-            title="Aggiungi Giocatore Blu"
+            className="px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-0.5 cursor-grab active:cursor-grabbing transition-colors"
+            title="Trascina o clicca per inserire Calciatore Squadra Casa (Blu)"
           >
             + Blu
           </button>
@@ -546,8 +718,8 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             draggable
             onDragStart={(e) => handlePlayerDragStart(e, 'away')}
             onClick={() => onAddPlayer('away')}
-            className="px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-1"
-            title="Aggiungi Giocatore Rosso"
+            className="px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-0.5 cursor-grab active:cursor-grabbing transition-colors"
+            title="Trascina o clicca per inserire Calciatore Squadra Ospiti (Rosso)"
           >
             + Rosso
           </button>
@@ -558,8 +730,8 @@ export const TacticalToolbar: React.FC<TacticalToolbarProps> = ({
             draggable
             onDragStart={(e) => handlePlayerDragStart(e, 'jolly')}
             onClick={() => onAddPlayer('jolly')}
-            className="px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-1"
-            title="Aggiungi Giocatore Jolly (Verde)"
+            className="px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-0.5 cursor-grab active:cursor-grabbing transition-colors"
+            title="Trascina o clicca per inserire Calciatore Jolly (Verde)"
           >
             + Jolly
           </button>
