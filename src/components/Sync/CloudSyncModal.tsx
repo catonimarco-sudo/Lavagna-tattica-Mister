@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SyncSessionState } from '../../types';
-import { Cloud, Wifi, Copy, Check, RefreshCw, Upload, Download, ExternalLink, X, Globe, ShieldCheck } from 'lucide-react';
+import { ConnectionStatus } from '../../services/syncService';
+import { Cloud, Wifi, Copy, Check, RefreshCw, Upload, Download, ExternalLink, X, Globe, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface CloudSyncModalProps {
   roomId: string;
@@ -9,6 +10,7 @@ interface CloudSyncModalProps {
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   lastUpdatedTime: number;
+  connectionStatus?: ConnectionStatus;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -20,6 +22,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   onExportJson,
   onImportJson,
   lastUpdatedTime,
+  connectionStatus = 'connected',
   isOpen,
   onClose,
 }) => {
@@ -84,16 +87,41 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
         {/* Body */}
         <div className="p-5 space-y-4 text-xs text-slate-300">
           {/* Real-time Status Card */}
-          <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3.5 flex items-center justify-between">
+          <div className={`border rounded-xl p-3.5 flex items-center justify-between transition-colors ${
+            connectionStatus === 'connected'
+              ? 'bg-emerald-950/40 border-emerald-500/30'
+              : connectionStatus === 'connecting'
+              ? 'bg-amber-950/40 border-amber-500/30'
+              : 'bg-rose-950/40 border-rose-500/30'
+          }`}>
             <div className="flex items-center gap-2.5">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  connectionStatus === 'connected'
+                    ? 'bg-emerald-400'
+                    : connectionStatus === 'connecting'
+                    ? 'bg-amber-400'
+                    : 'bg-rose-400'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${
+                  connectionStatus === 'connected'
+                    ? 'bg-emerald-500'
+                    : connectionStatus === 'connecting'
+                    ? 'bg-amber-500'
+                    : 'bg-rose-500'
+                }`}></span>
               </span>
               <div>
-                <p className="font-bold text-white text-xs">Sincronizzazione Live Attiva</p>
-                <p className="text-[11px] text-emerald-300/80">
-                  Stanza: <strong className="text-white">{roomId}</strong> • Ultimo salvataggio: {new Date(lastUpdatedTime).toLocaleTimeString('it-IT')}
+                <p className="font-bold text-white text-xs flex items-center gap-1.5">
+                  <span>
+                    {connectionStatus === 'connected' && 'Live Sync Attivo (AI Studio ⇄ Vercel)'}
+                    {connectionStatus === 'connecting' && 'Connessione al Cloud in corso...'}
+                    {connectionStatus === 'disconnected' && 'Disconnesso (Riconnessione automatica)'}
+                    {connectionStatus === 'syncing' && 'Sincronizzazione modifiche...'}
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-300/80">
+                  Stanza: <strong className="text-sky-300 font-mono">{roomId}</strong> • Ultimo aggiornamento: {new Date(lastUpdatedTime).toLocaleTimeString('it-IT')}
                 </p>
               </div>
             </div>
@@ -102,9 +130,9 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               type="button"
               onClick={handleManualSync}
               disabled={isSyncing}
-              className="px-2.5 py-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-white rounded-lg font-semibold flex items-center gap-1 transition-colors"
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold flex items-center gap-1 transition-colors border border-slate-600 text-[11px]"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
               Sincronizza Ora
             </button>
           </div>

@@ -17,7 +17,7 @@ import {
   DEFAULT_TEAM_SETTINGS,
   FORMATIONS_PRESETS,
 } from './constants/defaultData';
-import { RealtimeSyncService } from './services/syncService';
+import { RealtimeSyncService, ConnectionStatus } from './services/syncService';
 import { TacticalPitch } from './components/Pitch/TacticalPitch';
 import { TacticalToolbar } from './components/Toolbar/TacticalToolbar';
 import { PitchSelector } from './components/Toolbar/PitchSelector';
@@ -42,6 +42,11 @@ import {
   ChevronLeft,
   Sparkles,
   Info,
+  Radio,
+  Pencil,
+  Check,
+  X,
+  Layers,
 } from 'lucide-react';
 
 export default function App() {
@@ -68,17 +73,20 @@ export default function App() {
   const [undoStack, setUndoStack] = useState<DrawingElement[][]>([]);
   const [redoStack, setRedoStack] = useState<DrawingElement[][]>([]);
 
-  // 5. Multi-Phase Animation Player State
+  // 5. Multi-Phase Animation & Editing State
   const [isPlayingAnimation, setIsPlayingAnimation] = useState(false);
   const animationTimerRef = useRef<number | null>(null);
+  const [editingPhaseIdx, setEditingPhaseIdx] = useState<number | null>(null);
+  const [editingPhaseName, setEditingPhaseName] = useState<string>('');
 
-  // 6. Realtime Cloud Sync State
+  // 6. Realtime Cloud Sync State (AI Studio <-> Vercel Live Sync)
   const [roomId, setRoomId] = useState<string>('MISTER-CALCIO-ROOM-1');
   const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const syncService = useRef(RealtimeSyncService.getInstance()).current;
   const isReceivingRemoteUpdate = useRef(false);
 
-  // Load Room ID from URL if provided (e.g. ?room=ROSA-UNDER-17)
+  // Load Room ID from URL if provided (e.g. ?room=ROSA-UNDER-17) & listen for remote changes
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomParam = urlParams.get('room');
@@ -97,6 +105,11 @@ export default function App() {
       }
     }
 
+    // Subscribe to realtime status changes
+    const unsubStatus = syncService.onStatusChange((status) => {
+      setConnectionStatus(status);
+    });
+
     // Subscribe to realtime changes from other tabs or remote instances (AI Studio <-> Vercel)
     const unsubscribe = syncService.subscribe((remoteState: SyncSessionState) => {
       isReceivingRemoteUpdate.current = true;
@@ -106,15 +119,16 @@ export default function App() {
       if (remoteState.lastUpdated) setLastSyncTime(remoteState.lastUpdated);
       setTimeout(() => {
         isReceivingRemoteUpdate.current = false;
-      }, 300);
+      }, 200);
     });
 
     return () => {
+      unsubStatus();
       unsubscribe();
     };
   }, []);
 
-  // Broadcast local changes to Cloud Sync (Debounced)
+  // Broadcast local changes to Cloud Sync (Fast 150ms Debounce for sub-second live sync)
   const syncTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
     if (isReceivingRemoteUpdate.current) return;
@@ -134,7 +148,7 @@ export default function App() {
       };
       syncService.publishUpdate(stateToPublish);
       setLastSyncTime(stateToPublish.lastUpdated);
-    }, 400);
+    }, 150);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -583,6 +597,47 @@ export default function App() {
     });
   };
 
+  const handleStartEditingPhase = (index: number, currentName: string) => {
+    setEditingPhaseIdx(index);
+    setEditingPhaseName(currentName);
+  };
+
+  const handleSaveEditingPhase = (index: number) => {
+    const trimmed = editingPhaseName.trim();
+    if (trimmed) {
+      setDrill((prev) => {
+        const nextPhases = [...prev.phases];
+        if (nextPhases[index]) {
+          nextPhases[index] = {
+            ...nextPhases[index],
+            name: trimmed,
+          };
+        }
+        return {
+          ...prev,
+          phases: nextPhases,
+        };
+      });
+    }
+    setEditingPhaseIdx(null);
+    setEditingPhaseName('');
+  };
+
+  const handleCancelEditingPhase = () => {
+    setEditingPhaseIdx(null);
+    setEditingPhaseName('');
+  };
+
+  const handleAutoRenumberPhases = () => {
+    setDrill((prev) => ({
+      ...prev,
+      phases: prev.phases.map((phase, idx) => ({
+        ...phase,
+        name: `Fase ${idx + 1}`,
+      })),
+    }));
+  };
+
   // -------------------------------------------------------------
   // JSON Backup / Import
   // -------------------------------------------------------------
@@ -683,15 +738,41 @@ export default function App() {
             id="nav-btn-cloud-sync"
             type="button"
             onClick={() => setIsSyncModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 text-sky-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-            title="Sincronizzazione Live AI Studio & Vercel"
+            className={`px-2.5 sm:px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+              connectionStatus === 'connected'
+                ? 'bg-sky-950/80 hover:bg-sky-900 border-sky-500/50 text-sky-200'
+                : connectionStatus === 'connecting'
+                ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-500/50 text-amber-200'
+                : 'bg-rose-950/80 hover:bg-rose-900 border-rose-500/50 text-rose-200'
+            }`}
+            title={`Sincronizzazione Live AI Studio & Vercel (${
+              connectionStatus === 'connected'
+                ? 'Connesso'
+                : connectionStatus === 'connecting'
+                ? 'Connessione in corso'
+                : 'Disconnesso'
+            })`}
           >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                connectionStatus === 'connected'
+                  ? 'bg-emerald-400'
+                  : connectionStatus === 'connecting'
+                  ? 'bg-amber-400'
+                  : 'bg-rose-400'
+              }`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                connectionStatus === 'connected'
+                  ? 'bg-emerald-500'
+                  : connectionStatus === 'connecting'
+                  ? 'bg-amber-500'
+                  : 'bg-rose-500'
+              }`}></span>
             </span>
             <Cloud className="w-4 h-4" />
-            <span className="hidden sm:inline">Cloud Sync</span>
+            <span className="hidden sm:inline">
+              {connectionStatus === 'connected' ? 'Live Sync' : connectionStatus === 'connecting' ? 'Sync...' : 'Offline'}
+            </span>
           </button>
 
           {/* Export PDF / JPEG */}
@@ -795,21 +876,123 @@ export default function App() {
 
           {drill.phases.map((phase, idx) => {
             const isActive = drill.activePhaseIndex === idx;
+            const isEditing = editingPhaseIdx === idx;
+
+            if (isEditing) {
+              return (
+                <div
+                  key={phase.id || idx}
+                  className="flex items-center gap-1 bg-slate-800 border border-sky-400 rounded-xl px-2 py-1 shadow-lg shrink-0"
+                >
+                  <span className="text-xs font-bold text-sky-400">{idx + 1}.</span>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={editingPhaseName}
+                    onChange={(e) => setEditingPhaseName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveEditingPhase(idx);
+                      if (e.key === 'Escape') handleCancelEditingPhase();
+                    }}
+                    placeholder={`Fase ${idx + 1}`}
+                    className="bg-slate-900 text-white text-xs font-semibold px-2 py-0.5 rounded border border-slate-700 outline-none w-28 focus:border-sky-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveEditingPhase(idx)}
+                    className="p-1 hover:bg-emerald-600/30 text-emerald-400 rounded transition-colors"
+                    title="Salva Nome (Invio)"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEditingPhase}
+                    className="p-1 hover:bg-rose-600/30 text-rose-400 rounded transition-colors"
+                    title="Annulla (Esc)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            }
+
             return (
-              <button
+              <div
                 key={phase.id || idx}
-                id={`phase-step-btn-${idx}`}
-                type="button"
-                onClick={() => setDrill((prev) => ({ ...prev, activePhaseIndex: idx }))}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`group relative flex items-center rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                   isActive
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30 ring-1 ring-sky-400'
                     : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700'
                 }`}
               >
-                <span>{idx + 1}.</span>
-                <span>{phase.name || `Fase ${idx + 1}`}</span>
-              </button>
+                <button
+                  id={`phase-step-btn-${idx}`}
+                  type="button"
+                  onClick={() => setDrill((prev) => ({ ...prev, activePhaseIndex: idx }))}
+                  onDoubleClick={() => handleStartEditingPhase(idx, phase.name || `Fase ${idx + 1}`)}
+                  className="px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
+                  title="Clicca per selezionare • Fai doppio clic per rinominare"
+                >
+                  <span className="opacity-70">{idx + 1}.</span>
+                  <span>{phase.name || `Fase ${idx + 1}`}</span>
+                </button>
+
+                {/* Quick actions on tab */}
+                <div className="flex items-center pr-1.5 gap-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartEditingPhase(idx, phase.name || `Fase ${idx + 1}`);
+                    }}
+                    className={`p-1 rounded hover:bg-black/20 text-sky-200 transition-colors ${
+                      isActive ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-75'
+                    }`}
+                    title="Rinomina fase (es. Fase 1)"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDuplicatePhase(idx);
+                    }}
+                    className={`p-1 rounded hover:bg-black/20 text-sky-200 transition-colors ${
+                      isActive ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-75'
+                    }`}
+                    title="Duplica fase"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+
+                  {drill.phases.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDrill((prev) => {
+                          const nextPhases = prev.phases.filter((_, i) => i !== idx);
+                          const nextActive = Math.min(prev.activePhaseIndex, nextPhases.length - 1);
+                          return {
+                            ...prev,
+                            phases: nextPhases,
+                            activePhaseIndex: nextActive,
+                          };
+                        });
+                      }}
+                      className={`p-1 rounded hover:bg-rose-900/60 text-rose-300 transition-colors ${
+                        isActive ? 'opacity-90 hover:opacity-100' : 'opacity-0 group-hover:opacity-75'
+                      }`}
+                      title="Elimina fase"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
             );
           })}
 
@@ -817,10 +1000,21 @@ export default function App() {
             id="btn-footer-add-phase"
             type="button"
             onClick={handleAddPhase}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center shrink-0"
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center shrink-0 transition-colors"
             title="Aggiungi Nuova Fase Tattica"
           >
             <Plus className="w-4 h-4" />
+          </button>
+
+          <button
+            id="btn-footer-renumber-phases"
+            type="button"
+            onClick={handleAutoRenumberPhases}
+            className="px-2 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-sky-300 border border-slate-700 rounded-xl text-[11px] font-semibold flex items-center gap-1 shrink-0 transition-colors"
+            title="Rinomina e riordina automaticamente in: Fase 1, Fase 2, Fase 3..."
+          >
+            <RotateCcw className="w-3 h-3 text-sky-400" />
+            <span className="hidden md:inline">Rinumera (1, 2, 3...)</span>
           </button>
         </div>
 
@@ -992,6 +1186,7 @@ export default function App() {
         onExportJson={handleExportJson}
         onImportJson={handleImportJson}
         lastUpdatedTime={lastSyncTime}
+        connectionStatus={connectionStatus}
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
       />
