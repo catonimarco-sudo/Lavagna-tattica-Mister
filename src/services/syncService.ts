@@ -1,11 +1,12 @@
 import mqtt, { MqttClient } from 'mqtt';
 import { SyncSessionState } from '../types';
 
-const SYNC_STORAGE_KEY_PREFIX = 'mister_tactics_state_v4_';
-const ACTIVE_ROOM_KEY = 'mister_tactics_active_room_v4';
+const SYNC_STORAGE_KEY_PREFIX = 'mister_tactics_state_v5_';
+const ACTIVE_ROOM_KEY = 'mister_tactics_active_room_v5';
 
-// Public distributed key-value endpoint for initial offline snapshots
-const CLOUD_KV_ENDPOINT = 'https://api.restful-api.dev/objects';
+// Free, fast, CORS-enabled global Key-Value REST store (keyed directly by room ID)
+const KV_APP_KEY = 'mister_tactics_v5_cloud';
+const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
 
 // High-speed public MQTT WebSocket Brokers (multi-server redundancy)
 const MQTT_BROKERS = [
@@ -22,33 +23,57 @@ export class RealtimeSyncService {
   private broadcastChannel: BroadcastChannel | null = null;
   private mqttClient: MqttClient | null = null;
   private connectionStatus: ConnectionStatus = 'connecting';
-  
+
   private listeners: ((state: SyncSessionState) => void)[] = [];
   private statusListeners: ((status: ConnectionStatus) => void)[] = [];
-  
+
   private lastKnownTimestamp: number = 0;
-  private isPublishing: boolean = false;
-  private cloudBackupId: string | null = null;
+  private isPushingToCloud: boolean = false;
+  private isFetchingCloud: boolean = false;
   private brokerIndex: number = 0;
   private cloudPollTimer: number | null = null;
 
   private constructor() {
-    // Restore active room ID if saved in localStorage or URL query
+    // 1. Read Room ID from URL query or LocalStorage
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
-      const savedRoom = localStorage.getItem(ACTIVE_ROOM_KEY);
-      
+      const savedRoom =
+        localStorage.getItem(ACTIVE_ROOM_KEY) ||
+        localStorage.getItem('mister_tactics_active_room_v4');
+
       if (roomParam) {
         this.currentRoomId = this.sanitizeRoomId(roomParam);
       } else if (savedRoom) {
         this.currentRoomId = this.sanitizeRoomId(savedRoom);
       }
+      localStorage.setItem(ACTIVE_ROOM_KEY, this.currentRoomId);
     }
 
+    // 2. Initialize channels
     this.initBroadcastChannel();
     this.connectMqtt();
+
+    // 3. Initial Cloud Fetch & Polling
+    setTimeout(() => {
+      this.fetchFromCloud();
+    }, 100);
     this.startPeriodicCloudSync();
+
+    // 4. On mobile/desktop window focus or tab resume (crucial for iPhone Safari!)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', () => {
+        this.fetchFromCloud();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          this.fetchFromCloud();
+          if (!this.mqttClient || !this.mqttClient.connected) {
+            this.connectMqtt();
+          }
+        }
+      });
+    }
   }
 
   public static getInstance(): RealtimeSyncService {
@@ -101,19 +126,20 @@ export class RealtimeSyncService {
         }
         this.broadcastChannel = new BroadcastChannel(`tactics_sync_${this.currentRoomId}`);
         this.broadcastChannel.onmessage = (event) => {
-          if (event.data && event.data.lastUpdated > this.lastKnownTimestamp) {
+          if (event.data && event.data.lastUpdated && event.data.lastUpdated > this.lastKnownTimestamp) {
             this.lastKnownTimestamp = event.data.lastUpdated;
+            this.saveToLocalStorage(event.data);
             this.notifyListeners(event.data);
           }
         };
       }
     } catch (e) {
-      console.warn('BroadcastChannel not supported in this browser:', e);
+      console.warn('BroadcastChannel not supported:', e);
     }
   }
 
   // -------------------------------------------------------------
-  // 2. High-Speed MQTT WebSocket Connection (AI Studio <-> Vercel)
+  // 2. High-Speed MQTT WebSocket Connection (with Retain for instant sync)
   // -------------------------------------------------------------
   private connectMqtt() {
     const brokerUrl = MQTT_BROKERS[this.brokerIndex % MQTT_BROKERS.length];
@@ -131,29 +157,16 @@ export class RealtimeSyncService {
       this.mqttClient = mqtt.connect(brokerUrl, {
         clientId: `${this.clientId}_${Math.floor(Math.random() * 10000)}`,
         clean: true,
-        connectTimeout: 6000,
+        connectTimeout: 5000,
         reconnectPeriod: 3000,
         keepalive: 30,
       });
 
-      const currentTopic = `mister_tactics_v4/${this.currentRoomId}`;
+      const currentTopic = `mister_tactics_v5/${this.currentRoomId}`;
 
       this.mqttClient.on('connect', () => {
         this.setStatus('connected');
-        this.mqttClient?.subscribe(currentTopic, { qos: 1 }, (err) => {
-          if (!err) {
-            // Ask any active online coach on this room for their latest state snapshot
-            this.mqttClient?.publish(
-              currentTopic,
-              JSON.stringify({
-                type: 'REQUEST_SYNC',
-                senderId: this.clientId,
-                roomId: this.currentRoomId,
-                timestamp: Date.now(),
-              })
-            );
-          }
-        });
+        this.mqttClient?.subscribe(currentTopic, { qos: 1 });
       });
 
       this.mqttClient.on('message', (topic, message) => {
@@ -166,28 +179,14 @@ export class RealtimeSyncService {
             return;
           }
 
-          // Handle SYNC request from newly joined peer
-          if (parsed.type === 'REQUEST_SYNC') {
-            const localSaved = this.getSavedLocalState();
-            if (localSaved && localSaved.lastUpdated) {
-              this.mqttClient?.publish(
-                currentTopic,
-                JSON.stringify({
-                  type: 'STATE_SNAPSHOT',
-                  senderId: this.clientId,
-                  roomId: this.currentRoomId,
-                  state: localSaved,
-                })
-              );
-            }
-            return;
-          }
+          const remoteState: SyncSessionState = parsed.data || parsed.state || parsed;
 
-          // Handle state updates or state snapshots
-          const remoteState: SyncSessionState =
-            parsed.type === 'STATE_SNAPSHOT' ? parsed.state : parsed.data || parsed;
-
-          if (remoteState && remoteState.lastUpdated && remoteState.lastUpdated > this.lastKnownTimestamp) {
+          if (
+            remoteState &&
+            remoteState.lastUpdated &&
+            remoteState.lastUpdated > this.lastKnownTimestamp &&
+            remoteState.drill
+          ) {
             this.lastKnownTimestamp = remoteState.lastUpdated;
             this.saveToLocalStorage(remoteState);
             this.notifyListeners(remoteState);
@@ -198,9 +197,8 @@ export class RealtimeSyncService {
       });
 
       this.mqttClient.on('error', (err) => {
-        console.warn(`MQTT connection error on ${brokerUrl}:`, err);
+        console.warn(`MQTT connection notice on ${brokerUrl}:`, err);
         this.setStatus('disconnected');
-        // Try fallback broker
         this.brokerIndex++;
       });
 
@@ -226,7 +224,6 @@ export class RealtimeSyncService {
 
     this.currentRoomId = cleanId;
     localStorage.setItem(ACTIVE_ROOM_KEY, cleanId);
-    this.cloudBackupId = null;
 
     // Rebind local & remote channels
     this.initBroadcastChannel();
@@ -264,7 +261,9 @@ export class RealtimeSyncService {
   // -------------------------------------------------------------
   public getSavedLocalState(): SyncSessionState | null {
     try {
-      const raw = localStorage.getItem(`${SYNC_STORAGE_KEY_PREFIX}${this.currentRoomId}`);
+      const raw =
+        localStorage.getItem(`${SYNC_STORAGE_KEY_PREFIX}${this.currentRoomId}`) ||
+        localStorage.getItem(`mister_tactics_state_v4_${this.currentRoomId}`);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.lastUpdated) {
@@ -290,7 +289,7 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 6. Broadcast Local Changes to All Remote Instances (Vercel <-> AI Studio)
+  // 6. Broadcast Local Changes to All Devices (AI Studio <-> Vercel PC <-> iPhone)
   // -------------------------------------------------------------
   public async publishUpdate(state: SyncSessionState): Promise<void> {
     const updatedState: SyncSessionState = {
@@ -301,10 +300,10 @@ export class RealtimeSyncService {
 
     this.lastKnownTimestamp = updatedState.lastUpdated;
 
-    // 1. Save locally
+    // 1. Save to local storage
     this.saveToLocalStorage(updatedState);
 
-    // 2. Broadcast to local tabs on same device
+    // 2. Broadcast to other tabs on same device
     try {
       if (this.broadcastChannel) {
         this.broadcastChannel.postMessage(updatedState);
@@ -313,10 +312,10 @@ export class RealtimeSyncService {
       console.warn('Broadcast channel post error:', e);
     }
 
-    // 3. Publish to live MQTT WebSocket Topic (ultra-fast sub-100ms)
+    // 3. Publish to live MQTT WebSocket with RETAIN = TRUE (so newly connecting devices get it immediately)
     try {
       if (this.mqttClient && this.mqttClient.connected) {
-        const currentTopic = `mister_tactics_v4/${this.currentRoomId}`;
+        const currentTopic = `mister_tactics_v5/${this.currentRoomId}`;
         this.mqttClient.publish(
           currentTopic,
           JSON.stringify({
@@ -325,90 +324,97 @@ export class RealtimeSyncService {
             roomId: this.currentRoomId,
             data: updatedState,
           }),
-          { qos: 1 }
+          { qos: 1, retain: true }
         );
       }
     } catch (e) {
       console.warn('MQTT publish error:', e);
     }
 
-    // 4. Asynchronous Cloud Key-Value persistence
+    // 4. Push directly to Global Cloud Database by Room ID
     this.backupToCloud(updatedState);
   }
 
   // -------------------------------------------------------------
-  // 7. Cloud Persistence Fallback (REST API)
+  // 7. Global Cloud Key-Value Database Sync
   // -------------------------------------------------------------
   private async backupToCloud(state: SyncSessionState) {
-    if (this.isPublishing) return;
-    this.isPublishing = true;
+    if (this.isPushingToCloud) return;
+    this.isPushingToCloud = true;
 
     try {
-      const payload = {
-        name: `mister_tactics_room_${this.currentRoomId}`,
-        data: {
-          roomId: this.currentRoomId,
-          lastUpdated: state.lastUpdated,
-          author: state.author || 'Coach',
-          drill: state.drill,
-          roster: state.roster,
-          teamSettings: state.teamSettings,
-        },
-      };
-
-      if (this.cloudBackupId) {
-        await fetch(`${CLOUD_KV_ENDPOINT}/${this.cloudBackupId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        const res = await fetch(CLOUD_KV_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.id) {
-            this.cloudBackupId = json.id;
-          }
-        }
-      }
+      const roomKey = this.currentRoomId;
+      const jsonString = JSON.stringify(state);
+      
+      // Store on universal cloud KV API keyed by room ID
+      const url = `${CLOUD_KV_BASE}/UpdateValue/${KV_APP_KEY}/${encodeURIComponent(roomKey)}/${encodeURIComponent(jsonString)}`;
+      
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
     } catch (err) {
-      // transient network log
+      console.warn('Cloud KV backup notice:', err);
     } finally {
-      this.isPublishing = false;
+      this.isPushingToCloud = false;
     }
   }
 
   public async fetchFromCloud(): Promise<SyncSessionState | null> {
+    if (this.isFetchingCloud) return null;
+    this.isFetchingCloud = true;
+
     try {
-      if (this.cloudBackupId) {
-        const res = await fetch(`${CLOUD_KV_ENDPOINT}/${this.cloudBackupId}`);
-        if (res.ok) {
-          const item = await res.json();
-          if (item && item.data && item.data.lastUpdated > this.lastKnownTimestamp) {
-            this.lastKnownTimestamp = item.data.lastUpdated;
-            this.saveToLocalStorage(item.data);
-            this.notifyListeners(item.data);
-            return item.data;
+      const roomKey = this.currentRoomId;
+      const url = `${CLOUD_KV_BASE}/GetValue/${KV_APP_KEY}/${encodeURIComponent(roomKey)}`;
+      
+      const res = await fetch(url);
+      if (res.ok) {
+        const rawValue = await res.text();
+        if (rawValue && rawValue !== 'null' && rawValue !== '""' && rawValue.length > 5) {
+          // Parse string or wrapped JSON
+          let cleaned = rawValue.trim();
+          if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+            try {
+              cleaned = JSON.parse(cleaned);
+            } catch {
+              // keep cleaned
+            }
+          }
+
+          const parsedState = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
+
+          if (
+            parsedState &&
+            parsedState.lastUpdated &&
+            parsedState.lastUpdated > this.lastKnownTimestamp &&
+            parsedState.drill
+          ) {
+            this.lastKnownTimestamp = parsedState.lastUpdated;
+            this.saveToLocalStorage(parsedState);
+            this.notifyListeners(parsedState);
+            return parsedState;
           }
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn('Cloud KV fetch notice:', err);
+    } finally {
+      this.isFetchingCloud = false;
     }
     return null;
   }
 
+  // -------------------------------------------------------------
+  // 8. Background Auto-Sync Timer (every 3 seconds)
+  // -------------------------------------------------------------
   private startPeriodicCloudSync() {
     if (this.cloudPollTimer) {
       clearInterval(this.cloudPollTimer);
     }
     this.cloudPollTimer = window.setInterval(() => {
       this.fetchFromCloud();
-    }, 4000);
+    }, 3000);
   }
 
   public destroy() {

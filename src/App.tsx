@@ -1243,6 +1243,21 @@ export default function App() {
           });
           setLastSyncTime(Date.now());
         }}
+        onPullFromCloud={async () => {
+          const remote = await syncService.fetchFromCloud();
+          if (remote) {
+            isReceivingRemoteUpdate.current = true;
+            if (remote.drill) setDrill(remote.drill);
+            if (remote.roster) setRoster(remote.roster);
+            if (remote.teamSettings) setTeamSettings(remote.teamSettings);
+            if (remote.lastUpdated) setLastSyncTime(remote.lastUpdated);
+            setTimeout(() => {
+              isReceivingRemoteUpdate.current = false;
+            }, 250);
+            return true;
+          }
+          return false;
+        }}
         onExportJson={handleExportJson}
         onImportJson={handleImportJson}
         lastUpdatedTime={lastSyncTime}
