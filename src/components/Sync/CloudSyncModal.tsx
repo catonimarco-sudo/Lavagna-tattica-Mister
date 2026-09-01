@@ -15,6 +15,8 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   CheckCircle2,
+  QrCode,
+  RotateCcw,
 } from 'lucide-react';
 
 interface CloudSyncModalProps {
@@ -22,6 +24,7 @@ interface CloudSyncModalProps {
   onSetRoomId: (newRoomId: string) => void;
   onForceSync: () => Promise<void>;
   onPullFromCloud?: () => Promise<boolean>;
+  onRestoreMasterDrill?: () => void;
   onExportJson: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   lastUpdatedTime: number;
@@ -35,6 +38,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   onSetRoomId,
   onForceSync,
   onPullFromCloud,
+  onRestoreMasterDrill,
   onExportJson,
   onImportJson,
   lastUpdatedTime,
@@ -47,6 +51,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -70,10 +75,19 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const getShareUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', roomId);
+      return url.toString();
+    } catch {
+      return `https://mister-flavio.vercel.app/?room=${encodeURIComponent(roomId)}`;
+    }
+  };
+
   const handleCopyShareLink = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', roomId);
-    navigator.clipboard.writeText(url.toString());
+    const link = getShareUrl();
+    navigator.clipboard.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -82,7 +96,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     setIsPushing(true);
     await onForceSync();
     setIsPushing(false);
-    showSuccess('Lavagna e rosa inviate con successo al Cloud! Tutti i tuoi dispositivi si aggiorneranno.');
+    showSuccess('Lavagna e rosa inviate al Cloud! Tutti i tuoi dispositivi sincronizzati.');
   };
 
   const handlePull = async () => {
@@ -93,13 +107,24 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     if (success) {
       showSuccess('Ultima versione della lavagna scaricata con successo dal Cloud!');
     } else {
-      showSuccess('La lavagna locale è già sincronizzata con il Cloud.');
+      showSuccess('La lavagna è già aggiornata con l’ultima versione.');
     }
   };
 
+  const handleMasterRestore = () => {
+    if (onRestoreMasterDrill) {
+      onRestoreMasterDrill();
+      showSuccess('Schema Master 4-2-3-1 ripristinato e sincronizzato su tutti i dispositivi!');
+    }
+  };
+
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+    getShareUrl()
+  )}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -107,7 +132,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <Cloud className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white leading-tight">Sincronizzazione Cloud Automatica</h2>
+              <h2 className="text-base font-bold text-white leading-tight">Sincronizzazione Automatica</h2>
               <p className="text-xs text-slate-400">AI Studio PC ⇄ Vercel PC ⇄ Vercel iPhone</p>
             </div>
           </div>
@@ -165,10 +190,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <div>
                 <p className="font-bold text-white text-xs flex items-center gap-1.5">
                   <span>
-                    {connectionStatus === 'connected' && 'Cloud Database Attivo & Connesso'}
+                    {connectionStatus === 'connected' && 'Cloud Sincronizzato & Attivo'}
                     {connectionStatus === 'connecting' && 'Connessione al Cloud in corso...'}
                     {connectionStatus === 'disconnected' && 'Disconnesso (Riconnessione automatica)'}
-                    {connectionStatus === 'syncing' && 'Sincronizzazione modifiche...'}
+                    {connectionStatus === 'syncing' && 'Sincronizzazione in corso...'}
                   </span>
                 </p>
                 <p className="text-[11px] text-slate-300/80">
@@ -192,7 +217,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 <span>Invia Lavagna al Cloud</span>
               </div>
               <span className="text-[10px] font-normal text-sky-100 opacity-80">
-                Aggiorna tutti i tuoi dispositivi con questa schermata
+                Invia questa schermata a tutti i dispositivi
               </span>
             </button>
 
@@ -207,8 +232,26 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 <span>Scarica dal Cloud</span>
               </div>
               <span className="text-[10px] font-normal text-slate-400">
-                Recupera l'ultima lavagna salvata da iPhone o PC
+                Scarica l'ultima versione salvata
               </span>
+            </button>
+          </div>
+
+          {/* Restore Complete Master Tactic */}
+          <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-xs text-slate-200">Ripristina Tattica 4-2-3-1</p>
+              <p className="text-[11px] text-slate-400">
+                Ricarica lo schema completo con Catoni M., Soulè M., Dovbyk A., linee di reparto e cinesini.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleMasterRestore}
+              className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shrink-0 transition-colors shadow-sm"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Ripristina</span>
             </button>
           </div>
 
@@ -216,7 +259,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
-                <span>Codice Stanza Tattica Condivisa (Room ID)</span>
+                <span>Codice Stanza Condivisa</span>
               </label>
               <div className="flex items-center gap-1 text-[10px] text-slate-400">
                 <Monitor className="w-3 h-3 text-sky-400" />
@@ -226,10 +269,6 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 <span>iPhone</span>
               </div>
             </div>
-
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Tutti i tuoi dispositivi (PC su AI Studio, PC su Vercel, iPhone su Vercel) che usano questo codice stanza condividono automaticamente le stesse rose, giocatori, formazioni e schemi tattici.
-            </p>
 
             <form onSubmit={handleApplyRoom} className="flex items-center gap-2 pt-1">
               <input
@@ -251,22 +290,36 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleCopyCode}
-                className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-[11px] text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedCode ? 'Codice Copiato!' : 'Copia Codice Stanza'}
-              </button>
-
-              <button
-                type="button"
                 onClick={handleCopyShareLink}
                 className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-[11px] text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-colors"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                {copiedLink ? 'Link Diretto Copiato!' : 'Copia Link iPhone/PC'}
+                {copiedLink ? 'Link Copiato!' : 'Copia Link Diretto'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowQr(!showQr)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-[11px] text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <QrCode className="w-3.5 h-3.5 text-sky-400" />
+                <span>{showQr ? 'Nascondi QR' : 'QR Code iPhone'}</span>
               </button>
             </div>
+
+            {/* QR Code preview for instantaneous iPhone opening */}
+            {showQr && (
+              <div className="p-3 bg-white rounded-xl flex flex-col items-center justify-center gap-2 animate-in fade-in">
+                <img
+                  src={qrImageUrl}
+                  alt="QR Code per aprire la lavagna su iPhone"
+                  className="w-40 h-40 rounded"
+                />
+                <p className="text-[11px] text-slate-800 font-semibold text-center">
+                  Inquadra con la fotocamera dell'iPhone per aprire e sincronizzare all'istante
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Backup & Restore JSON */}

@@ -4,11 +4,7 @@ import { SyncSessionState } from '../types';
 const SYNC_STORAGE_KEY_PREFIX = 'mister_tactics_state_v5_';
 const ACTIVE_ROOM_KEY = 'mister_tactics_active_room_v5';
 
-// Free, fast, CORS-enabled global Key-Value REST store (keyed directly by room ID)
-const KV_APP_KEY = 'mister_tactics_v5_cloud';
-const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-
-// High-speed public MQTT WebSocket Brokers (multi-server redundancy)
+// High-speed multi-broker redundancy
 const MQTT_BROKERS = [
   'wss://broker.hivemq.com:8884/mqtt',
   'wss://broker.emqx.io:8084/mqtt',
@@ -22,6 +18,7 @@ export class RealtimeSyncService {
   private clientId: string = `coach_${Math.random().toString(36).substring(2, 9)}`;
   private broadcastChannel: BroadcastChannel | null = null;
   private mqttClient: MqttClient | null = null;
+  private eventSource: EventSource | null = null;
   private connectionStatus: ConnectionStatus = 'connecting';
 
   private listeners: ((state: SyncSessionState) => void)[] = [];
@@ -31,7 +28,7 @@ export class RealtimeSyncService {
   private isPushingToCloud: boolean = false;
   private isFetchingCloud: boolean = false;
   private brokerIndex: number = 0;
-  private cloudPollTimer: number | null = null;
+  private pollIntervalTimer: number | null = null;
 
   private constructor() {
     // 1. Read Room ID from URL query or LocalStorage
@@ -50,17 +47,24 @@ export class RealtimeSyncService {
       localStorage.setItem(ACTIVE_ROOM_KEY, this.currentRoomId);
     }
 
-    // 2. Initialize channels
+    // 2. Initialize local state cache timestamp
+    const cached = this.getSavedLocalState();
+    if (cached && cached.lastUpdated) {
+      this.lastKnownTimestamp = cached.lastUpdated;
+    }
+
+    // 3. Connect channels (BroadcastChannel, MQTT, and SSE Cloud Stream)
     this.initBroadcastChannel();
     this.connectMqtt();
+    this.connectCloudStream();
 
-    // 3. Initial Cloud Fetch & Polling
-    setTimeout(() => {
-      this.fetchFromCloud();
-    }, 100);
-    this.startPeriodicCloudSync();
+    // 4. Initial immediate fetch from Cloud
+    this.fetchFromCloud();
 
-    // 4. On mobile/desktop window focus or tab resume (crucial for iPhone Safari!)
+    // 5. Periodic cloud polling fallback (every 3.5s)
+    this.startPeriodicSync();
+
+    // 6. Handle tab resume / wakeups (crucial for iPhone Safari!)
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', () => {
         this.fetchFromCloud();
@@ -68,8 +72,8 @@ export class RealtimeSyncService {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           this.fetchFromCloud();
-          if (!this.mqttClient || !this.mqttClient.connected) {
-            this.connectMqtt();
+          if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
+            this.connectCloudStream();
           }
         }
       });
@@ -83,7 +87,7 @@ export class RealtimeSyncService {
     return RealtimeSyncService.instance;
   }
 
-  private sanitizeRoomId(roomId: string): string {
+  public sanitizeRoomId(roomId: string): string {
     const cleaned = roomId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     return cleaned || 'MISTER-CALCIO-ROOM-1';
   }
@@ -116,7 +120,7 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 1. Multi-Tab Local Broadcast
+  // 1. Native Local BroadcastChannel (Sync across browser tabs on same PC/Mac)
   // -------------------------------------------------------------
   private initBroadcastChannel() {
     try {
@@ -134,16 +138,64 @@ export class RealtimeSyncService {
         };
       }
     } catch (e) {
-      console.warn('BroadcastChannel not supported:', e);
+      console.warn('BroadcastChannel notice:', e);
     }
   }
 
   // -------------------------------------------------------------
-  // 2. High-Speed MQTT WebSocket Connection (with Retain for instant sync)
+  // 2. High-Speed Cloud SSE Push Stream (Mobile & Desktop Native Push)
+  // -------------------------------------------------------------
+  private connectCloudStream() {
+    if (typeof window === 'undefined' || !('EventSource' in window)) return;
+
+    try {
+      if (this.eventSource) {
+        this.eventSource.close();
+      }
+
+      const streamUrl = `https://ntfy.sh/mister_tactics_v5_${this.currentRoomId}/sse`;
+      this.eventSource = new EventSource(streamUrl);
+
+      this.eventSource.onopen = () => {
+        this.setStatus('connected');
+      };
+
+      this.eventSource.onmessage = (event) => {
+        try {
+          if (!event.data) return;
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.event === 'message' && parsed.message) {
+            const innerState: SyncSessionState = JSON.parse(parsed.message);
+            if (
+              innerState &&
+              innerState.lastUpdated &&
+              innerState.lastUpdated > this.lastKnownTimestamp &&
+              innerState.drill
+            ) {
+              this.lastKnownTimestamp = innerState.lastUpdated;
+              this.saveToLocalStorage(innerState);
+              this.notifyListeners(innerState);
+            }
+          }
+        } catch (e) {
+          // non-json message, ignore
+        }
+      };
+
+      this.eventSource.onerror = () => {
+        // Fallback to polling / MQTT if stream disconnects
+        this.eventSource?.close();
+      };
+    } catch (err) {
+      console.warn('EventSource initialization notice:', err);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 3. MQTT WebSocket Connection (Secondary real-time mesh)
   // -------------------------------------------------------------
   private connectMqtt() {
     const brokerUrl = MQTT_BROKERS[this.brokerIndex % MQTT_BROKERS.length];
-    this.setStatus('connecting');
 
     try {
       if (this.mqttClient) {
@@ -158,7 +210,7 @@ export class RealtimeSyncService {
         clientId: `${this.clientId}_${Math.floor(Math.random() * 10000)}`,
         clean: true,
         connectTimeout: 5000,
-        reconnectPeriod: 3000,
+        reconnectPeriod: 4000,
         keepalive: 30,
       });
 
@@ -174,7 +226,6 @@ export class RealtimeSyncService {
           const raw = message.toString();
           const parsed = JSON.parse(raw);
 
-          // Ignore messages sent by ourselves
           if (parsed.senderId === this.clientId) {
             return;
           }
@@ -192,31 +243,20 @@ export class RealtimeSyncService {
             this.notifyListeners(remoteState);
           }
         } catch (err) {
-          console.warn('Error parsing incoming realtime MQTT packet:', err);
+          console.warn('Error parsing incoming MQTT message:', err);
         }
       });
 
-      this.mqttClient.on('error', (err) => {
-        console.warn(`MQTT connection notice on ${brokerUrl}:`, err);
-        this.setStatus('disconnected');
+      this.mqttClient.on('error', () => {
         this.brokerIndex++;
       });
-
-      this.mqttClient.on('offline', () => {
-        this.setStatus('disconnected');
-      });
-
-      this.mqttClient.on('reconnect', () => {
-        this.setStatus('connecting');
-      });
     } catch (e) {
-      console.error('Failed to initialize MQTT client:', e);
-      this.setStatus('disconnected');
+      console.warn('MQTT init notice:', e);
     }
   }
 
   // -------------------------------------------------------------
-  // 3. Room Management
+  // 4. Room Management
   // -------------------------------------------------------------
   public setRoomId(newRoomId: string, currentState?: SyncSessionState) {
     const cleanId = this.sanitizeRoomId(newRoomId);
@@ -228,6 +268,7 @@ export class RealtimeSyncService {
     // Rebind local & remote channels
     this.initBroadcastChannel();
     this.connectMqtt();
+    this.connectCloudStream();
 
     if (currentState) {
       this.publishUpdate({ ...currentState, roomId: cleanId, lastUpdated: Date.now() });
@@ -237,7 +278,7 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 4. Subscriptions & Notification
+  // 5. Subscriptions
   // -------------------------------------------------------------
   public subscribe(callback: (state: SyncSessionState) => void): () => void {
     this.listeners.push(callback);
@@ -257,7 +298,7 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 5. Local Storage
+  // 6. Local Storage Helper
   // -------------------------------------------------------------
   public getSavedLocalState(): SyncSessionState | null {
     try {
@@ -277,7 +318,7 @@ export class RealtimeSyncService {
     return null;
   }
 
-  private saveToLocalStorage(state: SyncSessionState) {
+  public saveToLocalStorage(state: SyncSessionState) {
     try {
       localStorage.setItem(
         `${SYNC_STORAGE_KEY_PREFIX}${this.currentRoomId}`,
@@ -289,7 +330,7 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 6. Broadcast Local Changes to All Devices (AI Studio <-> Vercel PC <-> iPhone)
+  // 7. Broadcast Local Updates (AI Studio ⇄ Vercel PC ⇄ Vercel iPhone)
   // -------------------------------------------------------------
   public async publishUpdate(state: SyncSessionState): Promise<void> {
     const updatedState: SyncSessionState = {
@@ -300,19 +341,19 @@ export class RealtimeSyncService {
 
     this.lastKnownTimestamp = updatedState.lastUpdated;
 
-    // 1. Save to local storage
+    // 1. Save locally
     this.saveToLocalStorage(updatedState);
 
-    // 2. Broadcast to other tabs on same device
+    // 2. Broadcast to other tabs
     try {
       if (this.broadcastChannel) {
         this.broadcastChannel.postMessage(updatedState);
       }
     } catch (e) {
-      console.warn('Broadcast channel post error:', e);
+      console.warn('Broadcast channel post notice:', e);
     }
 
-    // 3. Publish to live MQTT WebSocket with RETAIN = TRUE (so newly connecting devices get it immediately)
+    // 3. Publish to MQTT WebSocket
     try {
       if (this.mqttClient && this.mqttClient.connected) {
         const currentTopic = `mister_tactics_v5/${this.currentRoomId}`;
@@ -328,77 +369,72 @@ export class RealtimeSyncService {
         );
       }
     } catch (e) {
-      console.warn('MQTT publish error:', e);
+      console.warn('MQTT publish notice:', e);
     }
 
-    // 4. Push directly to Global Cloud Database by Room ID
-    this.backupToCloud(updatedState);
-  }
-
-  // -------------------------------------------------------------
-  // 7. Global Cloud Key-Value Database Sync
-  // -------------------------------------------------------------
-  private async backupToCloud(state: SyncSessionState) {
-    if (this.isPushingToCloud) return;
-    this.isPushingToCloud = true;
-
-    try {
-      const roomKey = this.currentRoomId;
-      const jsonString = JSON.stringify(state);
-      
-      // Store on universal cloud KV API keyed by room ID
-      const url = `${CLOUD_KV_BASE}/UpdateValue/${KV_APP_KEY}/${encodeURIComponent(roomKey)}/${encodeURIComponent(jsonString)}`;
-      
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (err) {
-      console.warn('Cloud KV backup notice:', err);
-    } finally {
-      this.isPushingToCloud = false;
+    // 4. Send to Cloud REST / SSE Bus with body (instant delivery to iPhone & Vercel)
+    if (!this.isPushingToCloud) {
+      this.isPushingToCloud = true;
+      try {
+        const payloadString = JSON.stringify(updatedState);
+        await fetch(`https://ntfy.sh/mister_tactics_v5_${this.currentRoomId}`, {
+          method: 'POST',
+          headers: {
+            'Title': `tactics_${this.currentRoomId}`,
+            'Tags': 'soccer,tactics',
+          },
+          body: payloadString,
+        });
+      } catch (err) {
+        console.warn('Cloud sync push notice:', err);
+      } finally {
+        this.isPushingToCloud = false;
+      }
     }
   }
 
+  // -------------------------------------------------------------
+  // 8. Fetch Latest State from Global Cloud
+  // -------------------------------------------------------------
   public async fetchFromCloud(): Promise<SyncSessionState | null> {
     if (this.isFetchingCloud) return null;
     this.isFetchingCloud = true;
 
     try {
-      const roomKey = this.currentRoomId;
-      const url = `${CLOUD_KV_BASE}/GetValue/${KV_APP_KEY}/${encodeURIComponent(roomKey)}`;
-      
-      const res = await fetch(url);
+      const res = await fetch(
+        `https://ntfy.sh/mister_tactics_v5_${this.currentRoomId}/json?poll=1&since=all`
+      );
       if (res.ok) {
-        const rawValue = await res.text();
-        if (rawValue && rawValue !== 'null' && rawValue !== '""' && rawValue.length > 5) {
-          // Parse string or wrapped JSON
-          let cleaned = rawValue.trim();
-          if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        const text = await res.text();
+        if (text) {
+          // ntfy /json endpoint returns newline-delimited JSON objects
+          const lines = text.trim().split('\n');
+          for (let i = lines.length - 1; i >= 0; i--) {
             try {
-              cleaned = JSON.parse(cleaned);
+              const item = JSON.parse(lines[i]);
+              if (item && item.event === 'message' && item.message) {
+                const remoteState: SyncSessionState = JSON.parse(item.message);
+                if (
+                  remoteState &&
+                  remoteState.lastUpdated &&
+                  remoteState.lastUpdated > this.lastKnownTimestamp &&
+                  remoteState.drill
+                ) {
+                  this.lastKnownTimestamp = remoteState.lastUpdated;
+                  this.saveToLocalStorage(remoteState);
+                  this.notifyListeners(remoteState);
+                  this.setStatus('connected');
+                  return remoteState;
+                }
+              }
             } catch {
-              // keep cleaned
+              // try previous line
             }
-          }
-
-          const parsedState = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
-
-          if (
-            parsedState &&
-            parsedState.lastUpdated &&
-            parsedState.lastUpdated > this.lastKnownTimestamp &&
-            parsedState.drill
-          ) {
-            this.lastKnownTimestamp = parsedState.lastUpdated;
-            this.saveToLocalStorage(parsedState);
-            this.notifyListeners(parsedState);
-            return parsedState;
           }
         }
       }
     } catch (err) {
-      console.warn('Cloud KV fetch notice:', err);
+      console.warn('Cloud fetch notice:', err);
     } finally {
       this.isFetchingCloud = false;
     }
@@ -406,26 +442,29 @@ export class RealtimeSyncService {
   }
 
   // -------------------------------------------------------------
-  // 8. Background Auto-Sync Timer (every 3 seconds)
+  // 9. Periodic polling check (fallback every 3.5s)
   // -------------------------------------------------------------
-  private startPeriodicCloudSync() {
-    if (this.cloudPollTimer) {
-      clearInterval(this.cloudPollTimer);
+  private startPeriodicSync() {
+    if (this.pollIntervalTimer) {
+      clearInterval(this.pollIntervalTimer);
     }
-    this.cloudPollTimer = window.setInterval(() => {
+    this.pollIntervalTimer = window.setInterval(() => {
       this.fetchFromCloud();
-    }, 3000);
+    }, 3500);
   }
 
   public destroy() {
-    if (this.cloudPollTimer) {
-      clearInterval(this.cloudPollTimer);
+    if (this.pollIntervalTimer) {
+      clearInterval(this.pollIntervalTimer);
     }
     if (this.broadcastChannel) {
       this.broadcastChannel.close();
     }
     if (this.mqttClient) {
       this.mqttClient.end(true);
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
     }
   }
 }

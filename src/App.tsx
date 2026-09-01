@@ -145,8 +145,9 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const syncService = useRef(RealtimeSyncService.getInstance()).current;
   const isReceivingRemoteUpdate = useRef(false);
+  const hasUserEditedLocally = useRef(false);
 
-  // Load Room ID from URL if provided (e.g. ?room=ROSA-UNDER-17) & listen for remote changes
+  // Load Room ID from URL if provided & listen for remote changes
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomParam = urlParams.get('room');
@@ -164,6 +165,20 @@ export default function App() {
         if (savedLocal.lastUpdated) setLastSyncTime(savedLocal.lastUpdated);
       }
     }
+
+    // Attempt immediate cloud pull on mount
+    syncService.fetchFromCloud().then((cloudState) => {
+      if (cloudState && !hasUserEditedLocally.current) {
+        isReceivingRemoteUpdate.current = true;
+        if (cloudState.drill) setDrill(cloudState.drill);
+        if (cloudState.roster) setRoster(cloudState.roster);
+        if (cloudState.teamSettings) setTeamSettings(cloudState.teamSettings);
+        if (cloudState.lastUpdated) setLastSyncTime(cloudState.lastUpdated);
+        setTimeout(() => {
+          isReceivingRemoteUpdate.current = false;
+        }, 250);
+      }
+    });
 
     // Subscribe to realtime status changes
     const unsubStatus = syncService.onStatusChange((status) => {
@@ -188,10 +203,11 @@ export default function App() {
     };
   }, []);
 
-  // Broadcast local changes to Cloud Sync (Fast 150ms Debounce for sub-second live sync)
+  // Broadcast local changes to Cloud Sync (Only when user explicitly makes edits)
   const syncTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
     if (isReceivingRemoteUpdate.current) return;
+    if (!hasUserEditedLocally.current) return;
 
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
@@ -208,7 +224,7 @@ export default function App() {
       };
       syncService.publishUpdate(stateToPublish);
       setLastSyncTime(stateToPublish.lastUpdated);
-    }, 150);
+    }, 200);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -231,6 +247,7 @@ export default function App() {
   // Helper to update current active phase
   const updateCurrentPhase = useCallback(
     (updater: (prevPhase: typeof currentPhase) => typeof currentPhase) => {
+      hasUserEditedLocally.current = true;
       setDrill((prevDrill) => {
         const activeIdx = (typeof prevDrill.activePhaseIndex === 'number' && prevDrill.activePhaseIndex >= 0)
           ? prevDrill.activePhaseIndex
@@ -257,6 +274,23 @@ export default function App() {
     },
     []
   );
+
+  // Handler to restore master 4-2-3-1 tactic across all devices
+  const handleRestoreMasterDrill = () => {
+    hasUserEditedLocally.current = true;
+    setDrill(DEFAULT_DRILL);
+    setRoster(DEFAULT_ROSTER);
+    setTeamSettings(DEFAULT_TEAM_SETTINGS);
+    syncService.publishUpdate({
+      roomId,
+      lastUpdated: Date.now(),
+      author: 'Coach',
+      drill: DEFAULT_DRILL,
+      roster: DEFAULT_ROSTER,
+      teamSettings: DEFAULT_TEAM_SETTINGS,
+    });
+    setLastSyncTime(Date.now());
+  };
 
   // -------------------------------------------------------------
   // Player Operations on Pitch
@@ -1258,6 +1292,7 @@ export default function App() {
           }
           return false;
         }}
+        onRestoreMasterDrill={handleRestoreMasterDrill}
         onExportJson={handleExportJson}
         onImportJson={handleImportJson}
         lastUpdatedTime={lastSyncTime}
